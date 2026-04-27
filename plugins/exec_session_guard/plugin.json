@@ -1,0 +1,42 @@
+{
+  "$schema": "../../.claude-plugin/plugin-schema.json",
+  "name": "exec_session_guard",
+  "display": "세션 가드 — 토큰 부족·강제 종료 대비 자동 스냅샷 저장",
+  "prefix": "exec_",
+  "version": "1.0",
+  "status": "stable",
+  "phase": 0,
+  "commands": "commands/",
+  "skills": "skills/",
+  "hooks": "hooks/",
+  "dependencies": {
+    "plugins": [
+      "exec_orch"
+    ],
+    "mcp": [],
+    "env": []
+  },
+  "entry_points": {
+    "default_command": "guard-save",
+    "core_skills": [
+      "guard_snapshot"
+    ]
+  },
+  "metadata": {
+    "category": "실행/안전",
+    "tags": [
+      "exec"
+    ],
+    "author": "bernakilljos",
+    "created": "2026-04-10",
+    "updated": "2026-04-19",
+    "precedence": 3,
+    "token_estimate": 1600,
+    "triggers": [
+      "스냅샷",
+      "세션 저장",
+      "guard-save",
+      "토큰 소진 대비"
+    ]
+  }
+}

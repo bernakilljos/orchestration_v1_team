@@ -1,0 +1,79 @@
+# 배포 설정 (서버 정보, 계정 포함)
+.claude/deploy-config.env
+
+# 컨텍스트 캐시 (자동 생성)
+.claude/context-cache/
+
+# 보안 스캔 결과
+docs/secret-scan.txt
+docs/security-report.txt
+
+# 임시 문서
+docs/lint-result.txt
+docs/build-result.txt
+docs/test-result.txt
+docs/changed-files.txt
+
+# 모니터 결과
+docs/monitor-report.md
+
+# node
+node_modules/
+dist/
+
+# Java 빌드
+target/
+*.jar
+!.claude/scripts/*.jar
+
+# Python
+__pycache__/
+*.pyc
+.env
+.env.local
+
+# Task locks (자동 생성)
+.claude/tasks/locks/
+.claude/tasks/done/
+.claude/orca-heartbeat
+.claude/orca-enabled
+.claude/orca-stopped
+.claude/state/
+
+# 설치/테스트 임시 출력
+install-test-*.txt
+
+# Large binaries (download separately)
+cloudflared.exe
+
+# Setup 빌드 결과물 (setup.exe는 GitHub Releases로 배포)
+setup/Output/
+setup/innosetup.exe
+
+# Inno Setup 컴파일러 (로컬만)
+InnoSetup6/
+
+# Video restore work dirs
+_vr_work_*/
+
+# OS
+Thumbs.db
+Desktop.ini
+.DS_Store
+\!_TMPRUN!
+
+# 로컬 전용 설정 (토큰 등 — 절대 커밋 금지)
+docs/ini/
+
+# Stale task locks
+.claude/tasks/locks/*.lock
+
+# Microsoft Office 임시 잠금 파일
+~$*.pptx
+~$*.docx
+~$*.xlsx
+
+# GitHub PAT 로컬 보관 파일 (절대 커밋 금지)
+docs/ini/github.ini
+docs/ini/*.ini
+!docs/ini/*.example.ini

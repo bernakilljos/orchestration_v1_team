@@ -1,0 +1,117 @@
+{
+  "permissions": {
+    "allow": [
+      "Write",
+      "Edit",
+      "Read",
+      "Glob",
+      "Grep",
+      "Write(*)",
+      "Edit(*)",
+      "Write(**)",
+      "Edit(**)",
+      "Write(.claude/**)",
+      "Edit(.claude/**)",
+      "Write(plugins/**)",
+      "Edit(plugins/**)",
+      "Write(docs/**)",
+      "Edit(docs/**)",
+      "Write(C:\\**)",
+      "Edit(C:\\**)",
+      "Write(//C/**)",
+      "Edit(//C/**)",
+      "Bash(rm:*)",
+      "Bash(ls:*)",
+      "Bash(find:*)",
+      "Bash(mkdir:*)",
+      "Bash(cp:*)",
+      "Bash(mv:*)",
+      "Bash(touch:*)",
+      "Bash(cat:*)",
+      "Bash(head:*)",
+      "Bash(tail:*)",
+      "Bash(echo:*)",
+      "Bash(chmod:*)",
+      "Bash(test:*)",
+      "Bash(which:*)",
+      "Bash(where:*)",
+      "Bash(wc:*)",
+      "Bash(sort:*)",
+      "Bash(uniq:*)",
+      "Bash(diff:*)",
+      "Bash(sed:*)",
+      "Bash(awk:*)",
+      "Bash(jq:*)",
+      "Bash(basename:*)",
+      "Bash(dirname:*)",
+      "Bash(realpath:*)",
+      "Bash(pwd:*)",
+      "Bash(date:*)",
+      "Bash(xargs:*)"
+    ],
+    "defaultMode": "acceptEdits"
+  },
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Edit|Write",
+        "hooks": [
+          { "type": "command", "command": "bash .claude/hooks/protect-critical-files.sh" },
+          { "type": "command", "command": "bash .claude/hooks/check-mojibake.sh", "timeout": 3 }
+        ]
+      },
+      {
+        "matcher": "Bash",
+        "hooks": [
+          { "type": "command", "command": "bash .claude/hooks/block-visible-windows.sh" }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "Edit|Write",
+        "hooks": [
+          { "type": "command", "command": "bash .claude/hooks/check-korean-only.sh" }
+        ]
+      },
+      {
+        "matcher": ".*",
+        "hooks": [
+          { "type": "command", "command": "bash -c 'test -d .claude && date +%Y-%m-%dT%H:%M:%S > .claude/orca-heartbeat'" }
+        ]
+      }
+    ],
+    "PostToolUseFailure": [
+      {
+        "matcher": "Bash",
+        "hooks": [
+          { "type": "command", "command": "bash plugins/exec_learning/hooks/hook-worker-failure.sh", "timeout": 5 }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          { "type": "command", "command": "bash plugins/exec_session_guard/hooks/stop-snapshot.sh Stop" }
+        ]
+      }
+    ],
+    "PreCompact": [
+      {
+        "hooks": [
+          { "type": "command", "command": "bash plugins/exec_session_guard/hooks/stop-snapshot.sh PreCompact" }
+        ]
+      }
+    ],
+    "SessionEnd": [
+      {
+        "hooks": [
+          { "type": "command", "command": "bash plugins/exec_session_guard/hooks/stop-snapshot.sh SessionEnd" },
+          { "type": "command", "command": "bash plugins/exec_session_guard/hooks/cleanup-orphans.sh SessionEnd" },
+          { "type": "command", "command": "bash plugins/exec_session_guard/hooks/hook-token-log.sh", "timeout": 5 },
+          { "type": "command", "command": "bash plugins/exec_session_guard/hooks/hook-gemini-recap.sh", "timeout": 5, "async": true }
+        ]
+      }
+    ]
+  }
+}

@@ -1,0 +1,43 @@
+{
+  "$schema": "../../.claude-plugin/plugin-schema.json",
+  "name": "exec_scheduler",
+  "display": "크론 잡·워크플로우 스케줄러 (모든 정기 작업의 기반)",
+  "prefix": "exec_",
+  "version": "0.1",
+  "status": "spec-only",
+  "phase": 1,
+  "commands": "commands/",
+  "skills": "skills/",
+  "dependencies": {
+    "plugins": [
+      "exec_orch"
+    ],
+    "mcp": [],
+    "env": []
+  },
+  "entry_points": {
+    "default_command": "exec_scheduler-status",
+    "core_skills": [
+      "skill-scheduler-idempotency",
+      "skill-scheduler-distributed"
+    ]
+  },
+  "metadata": {
+    "category": "실행/스케줄",
+    "tags": [
+      "exec"
+    ],
+    "author": "bernakilljos",
+    "created": "2026-04-19",
+    "updated": "2026-04-19",
+    "precedence": 3,
+    "token_estimate": 2200,
+    "triggers": [
+      "크론",
+      "스케줄",
+      "정기 실행",
+      "workflow",
+      "DAG"
+    ]
+  }
+}

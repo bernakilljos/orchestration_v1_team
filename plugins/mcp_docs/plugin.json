@@ -1,0 +1,56 @@
+{
+  "$schema": "../../.claude-plugin/plugin-schema.json",
+  "name": "mcp_docs",
+  "display": "문서처리 MCP 설치 — PDF·DOCX·OCR",
+  "prefix": "mcp_",
+  "version": "1.0",
+  "status": "stable",
+  "phase": 0,
+  "commands": "commands/",
+  "skills": "skills/",
+  "agents": "agents/",
+  "hooks": "hooks/",
+  "dependencies": {
+    "plugins": [
+      "exec_orch"
+    ],
+    "mcp": [],
+    "env": []
+  },
+  "entry_points": {
+    "default_command": "install",
+    "core_skills": [
+      "skill-34-code-docs"
+    ]
+  },
+  "metadata": {
+    "category": "MCP/문서",
+    "tags": [
+      "mcp",
+      "pdf",
+      "docx",
+      "ocr",
+      "tesseract"
+    ],
+    "author": "bernakilljos",
+    "created": "2026-04-10",
+    "updated": "2026-04-23",
+    "precedence": 10,
+    "token_estimate": 1600,
+    "triggers": [
+      "PDF",
+      "DOCX",
+      "OCR",
+      "문서 처리",
+      "Tesseract",
+      "문서 파싱"
+    ],
+    "npm_packages": [
+      "@modelcontextprotocol/server-pdf",
+      "@usejunior/docx-mcp",
+      "@docx-mcp/docx-mcp",
+      "@infrastellar/tesseract-mcp",
+      "tesseract-mcp"
+    ]
+  }
+}

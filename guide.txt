@@ -758,8 +758,76 @@
 
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-  16. 추가 사항 요약
+  16. Design 도구 워크플로우 (R51 — 2026-04-30)
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+  HTML/CSS 한 번 작성 → PPT / PDF / PNG 모두 자동 출력.
+  공통 디자인 시스템 (gold/sage/plum/terracotta/deep-gold) 공유.
+
+  [3 가지 출력]
+    1. PPT (PPTX)        /design_ppt   "주제" 13~40
+                          → outputs/ppt-*/automation-guide.pptx 등
+    2. PDF (A4/Digital)  /pdf-generate "주제" A4 또는 Digital
+                          → outputs/pdf/<date>/<name>.pdf
+    3. 단일 PNG          python .claude/scripts/render-screens.py
+                          → docs/screens/our-{arch,func}/*.png
+
+  [공통 디자인 시스템]
+    팔레트:  gold #B8864E · sage #6B8E7F · plum #7A4E6B
+              terracotta #B25A3E · deep-gold #8A6235
+    폰트:    Pretendard Variable (한글) + JetBrains Mono (코드) + Fraunces (큰 제목)
+    공통 CSS: docs/screens/our-html/_styles.css (또는 outputs/ppt-*/styles/design-system.css)
+
+  [차트 / SVG / 카드 그리드 4 패턴 (skill-ppt-pitfalls § 13)]
+    A. BEFORE/AFTER 막대 차트   비용·성능 비교 (예: −92%)
+    B. KPI sparkline             4 KPI 트렌드 (24h 미니 라인)
+    C. timeline 막대 + 그라디언트  단계적 backoff·escalation
+    D. SVG 다이어그램             gradient defs + marker 화살표 + 카테고리 색
+    E. 표 → 카드 그리드           8행+ 표 가독성 떨어질 때
+    F. 결정 트리 배너             분기 시각화 (sage YES / terracotta NO)
+
+  [Screens 워크플로우 (단일 이미지)]
+    docs/screens/our-html/<name>.html
+                      ↓  prefix 자동 분류
+                      ├─ arch-*.html → docs/screens/our-arch/<name>.png
+                      └─ func-*.html → docs/screens/our-func/<name>.png
+
+    렌더:
+      python .claude/scripts/render-screens.py              # all
+      python .claude/scripts/render-screens.py arch-system  # one
+
+  [PDF 신규 — design_pdf v0.2]
+    /pdf-generate  HTML/CSS → Playwright → PDF
+                   A4 (794×1123) · Letter (816×1056) · Digital (1920×1080)
+                   print_background: true 필수 (배경 그라디언트)
+                   wait_for_timeout(900~1500) (폰트·아이콘 로드)
+    skill: skill-pdf-design-system (R51 신규) — 12 계명 + 함정 5 가지
+
+  [핵심 원칙]
+    - design_ppt / design_pdf / Screens 모두 동일 시각 톤
+    - 표 8행+ 또는 폰트 16px 이하면 → 카드 그리드 변환
+    - 차트 막대 width 는 데이터 비율로 직접 계산
+    - SVG `<defs>` 에 gradient + marker 미리 정의
+    - 출력 후 PIL overflow 검증 + Read tool 로 OCR 직접 확인
+
+  상세: plugins/design_ppt/skills/skill-ppt-pitfalls.md § 13~14
+        plugins/design_pdf/skills/skill-pdf-design-system.md
+        .claude/scripts/render-ppt-multi.py / render-screens.py
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  17. 추가 사항 요약
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+  2026-04-30 R51~R71 누적:
+    ✓ 차트·SVG·카드 그리드 4 패턴 표준화 (skill § 13)
+    ✓ Screens 워크플로우 신규 (docs/screens/our-html → PNG)
+    ✓ design_pdf v0.2 — 디자인 시스템 공유 + 12 계명 신규
+    ✓ render-ppt-multi.py — 3 PPT 통합 렌더 스크립트
+    ✓ render-screens.py — 단일 PNG 자동 분류 (arch-/func-)
+    ✓ 어려운 영어 술어 → 쉬운 한글
+       (24/7 → 쉬는 시간 없음, Backoff → 한도 대기, Best Practices → 운영 팁,
+        Watchdog → 감시자, Caching → 캐시)
 
   2026-04-19 커밋 누적:
     ✓ 14개 허브 커맨드 description 한글 통일

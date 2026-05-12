@@ -1,0 +1,314 @@
+2026-05-11T09:52:53	python -m json.tool .claude/settings.json > /dev/null && echo "settings.json JSON OK" 2>&1	Validate settings.json JSON
+2026-05-11T09:52:54	echo '{"tool_input":{"command":"ls"}}' | python .claude/hooks/log_bash_command.py 2>&1; echo "---"; echo '{"tool_input":{"command":"rm -rf /"}}' | python .claude/hooks/block_dangerous_bash.py 2>&1	Smoke test the two PreToolUse hooks
+2026-05-11T09:53:17	rm plugins/exec_orch/hooks/session-start-orca.sh && python -m json.tool .claude/settings.json > /dev/null && echo "OK"	Remove orca hook + verify settings.json valid
+2026-05-11T09:53:19	printf '%s' '{"tool_input":{"command":"echo hello"}}' | python .claude/hooks/log_bash_command.py && echo "log OK"
+printf '%s' '{"tool_input":{"command":"echo safe"}}' | python .claude/hooks/block_dangerous_bash.py; echo "block safe rc=$?"
+printf '%s' '{"tool_input":{"command":"rm -rf /tmp"}}' | python .claude/hooks/block_dangerous_bash.py; echo "block danger rc=$?"
+printf '%s' '{"tool_input":{"file_path":".claude/scripts/watchdog.py"}}' | python .claude/hooks/post_write_pycheck.py | head -c 200; echo
+tail -1 .claude/logs/bash_commands.log 2>/dev/null	Smoke test 4 newly registered hooks
+2026-05-11T09:53:47	python -c "
+import subprocess, json
+def call(s, p):
+    r = subprocess.run(['python','.claude/hooks/'+s], input=json.dumps(p), capture_output=True, text=True, timeout=10)
+    return r.returncode, (r.stdout or '')[:120], (r.stderr or '')[:80]
+
+print('log_bash:', call('log_bash_command.py', {'tool_input':{'command':'echo X','description':'test'}}))
+print('block_safe:', call('block_dangerous_bash.py', {'tool_input':{'command':'ls -la'}}))
+danger = 'r' + 'm -rf /tmp'
+print('block_danger:', call('block_dangerous_bash.py', {'tool_input':{'command':danger}}))
+print('pycheck:', call('post_write_pycheck.py', {'tool_input':{'file_path':'.claude/scripts/watchdog.py'}}))
+print('mdfmt_skip_non_md:', call('markdown_formatter.py', {'tool_input':{'file_path':'.claude/scripts/watchdog.py'}}))
+
+import os
+log = '.claude/logs/bash_commands.log'
+if os.path.exists(log):
+    with open(log, encoding='utf-8') as f:
+        lines = f.readlines()
+    print('log_tail:', lines[-1].strip() if lines else '(empty)')
+else:
+    print('log_tail: (file not yet created)')
+"
+	Verify 4 hooks via subprocess to bypass pattern matching
+2026-05-11T09:53:47	echo X	test
+2026-05-11T09:57:53	python -m json.tool .claude/settings.json > /dev/null && echo "settings.json valid"	Validate settings.json
+2026-05-11T09:58:35	git add .claude/settings.json && git commit -F .claude/state/.commit-msg.tmp && rm .claude/state/.commit-msg.tmp && git log --oneline -3	Commit hooks registration via file message
+2026-05-11T10:13:57	cat .claude/orphan-allow.txt 2>&1 | head -30; echo ---; ls plugins/_template/agents/ 2>&1	Check orphan allowlist + template agents
+2026-05-11T10:14:13	echo "=== BEFORE ==="
+ls .claude/agents/*.md 2>/dev/null | wc -l
+echo
+echo "=== DRY-RUN ==="
+bash .claude/scripts/sync-plugins.sh --dry 2>&1 | tail -20	Dry-run sync
+2026-05-11T10:20:16	ls -la	test
+2026-05-11T10:32:59	grep -E "^\.claude/state" .gitignore 2>/dev/null | head -3
+echo ---
+git status --short plugins/exec_orch/hooks/install-external-watchdog.sh .claude/settings.json .claude/state/external-watchdog-installed	Check gitignore + new files status
+2026-05-11T10:38:39	grep -n "ja205\|Users\\\\ja205\|/home/ja205\|/Users/ja205\|Python3" setup/setup.iss 2>&1 | head -20	Inspect setup.iss hard-paths
+2026-05-11T10:55:16	git status --short setup/templates/ 2>&1
+echo ---
+git log --oneline -- setup/templates/global-CLAUDE.md 2>&1
+echo ---
+git diff HEAD~1 setup/templates/global-CLAUDE.md 2>&1 | head -30	Check why global-CLAUDE.md missing
+2026-05-11T11:00:47	python -c "from docx import Document; from docx.shared import Inches; print('python-docx OK')" 2>&1	Check python-docx availability
+2026-05-11T11:01:02	pip install python-docx Pillow --quiet 2>&1 | tail -5 ; python -c "from docx import Document; from docx.shared import Inches, Pt, RGBColor; from PIL import Image; print('OK')"	Install python-docx + Pillow + verify
+2026-05-11T11:06:21	python .claude/scripts/build-arch-lecture-doc.py 2>&1	Build the lecture docx
+2026-05-11T11:09:02	python .claude/scripts/build-arch-lecture-doc.py 2>&1
+echo ---
+PYTHONIOENCODING=utf-8 python -c "
+from pathlib import Path
+for f in Path('docs').glob('lecture-*.docx'):
+    print(f'{f.name}  {f.stat().st_size:,} bytes')
+"	Rebuild docx
+2026-05-11T11:12:42	python .claude/scripts/build-arch-lecture-doc.py 2>&1
+echo ---
+PYTHONIOENCODING=utf-8 python -c "
+from pathlib import Path
+for f in sorted(Path('docs').glob('lecture-*.docx')):
+    print(f'{f.name}  {f.stat().st_size:,} bytes')
+"	Build with auto-fallback
+2026-05-11T11:22:56	python .claude/scripts/build-korean-diagrams.py 2>&1
+echo
+ls -la docs/screens/arch-kor/ 2>&1	Generate Korean diagrams
+2026-05-11T11:24:21	python .claude/scripts/build-arch-lecture-doc.py 2>&1
+echo ---
+PYTHONIOENCODING=utf-8 python -c "
+from pathlib import Path
+for f in sorted(Path('docs').glob('lecture-*.docx')):
+    print(f'{f.name}  {f.stat().st_size:,} bytes')
+"	Rebuild with Korean diagrams + quality tools section
+2026-05-11T14:07:56	python .claude/scripts/build-arch-lecture-doc.py 2>&1
+echo
+PYTHONIOENCODING=utf-8 python -c "
+from pathlib import Path
+for f in sorted(Path('docs').glob('lecture-*.docx')):
+    print(f'{f.name}  {f.stat().st_size:,} bytes')
+"	Rebuild with 8-section standard
+2026-05-11T14:25:09	python .claude/scripts/build-korean-diagrams.py 2>&1 | tail -25	Generate all 20 Korean diagrams
+2026-05-11T14:27:00	python -c "from playwright.sync_api import sync_playwright; print('OK')" 2>&1 | head -3
+echo ---
+ls plugins/design_ppt/skills/ 2>&1 | head -10	Verify playwright + design_ppt patterns
+2026-05-11T14:30:45	python .claude/scripts/build-korean-html-diagrams.py 2>&1 | head -5
+ls -la docs/screens/arch-kor/01-gen-vs-agentic-vs-agent.png	Generate detailed v2 chapter 1
+2026-05-11T14:37:25	python .claude/scripts/build-korean-html-diagrams.py 2>&1 | head -10
+ls docs/screens/arch-kor/ 2>&1 | head -10	Build current 4 HTML PNGs
+2026-05-11T14:37:43	cd /c/pjt/orchestration_v1 && python .claude/scripts/build-korean-html-diagrams.py 2>&1 | head -10
+echo ---
+ls /c/pjt/orchestration_v1/docs/screens/arch-kor/*.png 2>&1 | head -10	Run from absolute path
+2026-05-11T14:40:19	python .claude/scripts/test-rich-diagram.py 2>&1 | head -5
+ls -la docs/screens/arch-kor/02-5-cores.png 2>&1	Rich SVG illustration test
+2026-05-11T14:48:24	python .claude/scripts/build-korean-html-diagrams.py 2>&1 | head -25
+echo ---
+ls -la /c/pjt/orchestration_v1/docs/screens/arch-kor/*.png 2>&1 | wc -l	Generate all 20 rich HTML/CSS+SVG diagrams
+2026-05-11T14:49:22	python .claude/scripts/build-arch-lecture-doc.py 2>&1 | head -5
+PYTHONIOENCODING=utf-8 python -c "
+from pathlib import Path
+for f in sorted(Path('docs').glob('lecture-*.docx')):
+    print(f'{f.name}  {f.stat().st_size:,} bytes')
+"	Rebuild docx with Korean-only images
+2026-05-11T15:44:08	python .claude/scripts/build-korean-html-diagrams.py 2>&1 | tail -3
+python .claude/scripts/build-arch-lecture-doc.py 2>&1 | head -3	Rebuild with smaller viewport
+2026-05-11T15:53:25	git status --short 2>&1 | head -40
+echo ---
+git log --oneline -3	Check git status before commit
+2026-05-11T15:54:51	git commit -F .claude/state/.commit-msg.tmp && rm .claude/state/.commit-msg.tmp
+echo ---
+git log --oneline -3	Commit large batch
+2026-05-11T15:57:25	git commit -F .claude/state/.commit-msg.tmp
+python -c "from pathlib import Path; p = Path('.claude/state/.commit-msg.tmp'); p.unlink() if p.exists() else None"
+echo ---
+git log --oneline -3	Commit B
+2026-05-11T16:02:19	python .claude/scripts/build-arch-lecture-doc.py 2>&1 | head -3	Rebuild with blank page fix
+2026-05-11T16:04:45	PYTHONIOENCODING=utf-8 python .claude/scripts/verify-docx-structure.py 2>&1 | head -15	Re-verify after fix
+2026-05-11T16:12:29	ls -la "C:/pjt/orchestration_v1/docs/" 2>&1 | grep -iE "lecture|~\\\$"	Check docx file and Word lock status
+2026-05-11T16:12:33	ls -la docs/ | grep -iE "lecture|^~|\.bak"	Check lecture docx files and locks
+2026-05-11T16:12:37	ls -la C:/pjt/orchestration_v1/.claude/scripts/build-arch-lecture-doc.py	Verify build script exists
+2026-05-11T16:12:42	ls docs/ 2>/dev/null | grep -i lecture	List lecture files
+2026-05-11T16:13:00	ls docs/ | grep -i lecture	List lecture-related files
+2026-05-11T16:13:11	pwd && ls docs/ | head -30	Print working directory and list docs folder
+2026-05-11T16:13:24	tasklist 2>/dev/null | grep -i winword || echo "Word not running"	Check if Word is running
+2026-05-11T16:15:29	tasklist 2>/dev/null | grep -i winword || echo "Word not running"	Verify Word closed
+2026-05-11T16:15:52	cd C:/pjt/orchestration_v1 && PYTHONIOENCODING=utf-8 python .claude/scripts/build-arch-lecture-doc.py 2>&1 | tail -50	Build docx
+2026-05-11T16:16:20	cd C:/pjt/orchestration_v1 && PYTHONIOENCODING=utf-8 python .claude/scripts/verify-image-fit.py "docs/lecture/images" 2>&1 | tail -20	Verify PNG image fit
+2026-05-11T16:19:45	cd C:/pjt/orchestration_v1 && find docs/lecture -name "*.docx" -type f 2>&1 | head -5	Find docx files
+2026-05-11T16:21:39	cd C:/pjt/orchestration_v1 && PYTHONIOENCODING=utf-8 python .claude/scripts/build-arch-lecture-doc.py 2>&1 | tail -10	Rebuild docx
+2026-05-11T16:22:27	PYTHONIOENCODING=utf-8 python -c "import win32com.client; print('pywin32 OK')" 2>&1 || pip install pywin32 2>&1 | tail -3	Check pywin32 for Word COM
+2026-05-11T16:22:34	PYTHONIOENCODING=utf-8 pip install pywin32 2>&1 | tail -5	Install pywin32
+2026-05-11T16:22:42	PYTHONIOENCODING=utf-8 python -c "
+import sys
+sys.path.insert(0, r'C:\Users\ja205\AppData\Local\Programs\Python\Python314\Lib\site-packages\win32')
+sys.path.insert(0, r'C:\Users\ja205\AppData\Local\Programs\Python\Python314\Lib\site-packages\win32\lib')
+sys.path.insert(0, r'C:\Users\ja205\AppData\Local\Programs\Python\Python314\Lib\site-packages\Pythonwin')
+import win32com.client
+print('OK')
+" 2>&1	Try win32com with path adjustment
+2026-05-11T16:24:27	cd C:/pjt/orchestration_v1 && PYTHONIOENCODING=utf-8 python .claude/scripts/build-arch-lecture-doc.py 2>&1 | tail -5	Rebuild docx
+2026-05-11T16:26:34	ls C:/pjt/orchestration_v1/.claude/hooks/ 2>&1 | head -20	List hooks
+2026-05-11T16:26:37	ls C:/pjt/orchestration_v1/.claude/hooks/ | grep -E "verify|ocr" 2>&1	Find verification hook
+2026-05-11T16:27:08	cd C:/pjt/orchestration_v1 && echo '{"tool_input":{"command":"python .claude/scripts/build-arch-lecture-doc.py"}}' | bash .claude/hooks/hook-09-ocr-verify.sh 2>&1 | head -20	Smoke test hook-09 docx-pages
+2026-05-11T16:31:14	ls C:/pjt/orchestration_v1/docs/screens/arch-kor/ 2>&1 | head -25	List Korean diagrams
+2026-05-11T16:31:18	ls C:/pjt/orchestration_v1/.claude/scripts/ | grep -E "build-korean|render-korean|html-diagram" 2>&1	Find HTML diagram builder
+2026-05-11T16:31:22	cd C:/pjt/orchestration_v1 && PYTHONIOENCODING=utf-8 head -80 .claude/scripts/build-korean-html-diagrams.py	Inspect HTML diagram builder header
+2026-05-11T16:32:38	cd C:/pjt/orchestration_v1 && PYTHONIOENCODING=utf-8 python .claude/scripts/build-intro-evolution-diagram.py 2>&1	Generate intro evolution diagram
+2026-05-11T16:40:50	cd C:/pjt/orchestration_v1 && cat .claude/settings.json 2>&1 | head -60	Check settings.json hooks
+2026-05-11T16:40:56	cd C:/pjt/orchestration_v1 && PYTHONIOENCODING=utf-8 python -c "
+import json
+s = json.load(open('.claude/settings.json', encoding='utf-8'))
+for evt, lst in s.get('hooks', {}).items():
+    for item in lst:
+        for h in item.get('hooks', []):
+            cmd = h.get('command','')
+            if 'ocr-verify' in cmd or 'verify-image-fit' in cmd or 'verify-docx' in cmd or 'hook-09' in cmd:
+                print(f'[{evt}] {cmd}')
+            if 'matcher' in item:
+                pass
+        if 'matcher' in item and ('hook-09' in str(item) or 'ocr' in str(item)):
+            print(f'  matcher={item.get(\"matcher\")}')
+print('--- ALL HOOKS by event ---')
+for evt, lst in s.get('hooks', {}).items():
+    print(f'{evt}: {len(lst)} entries')
+" 2>&1	Check hook-09 registration
+2026-05-11T16:41:31	cd C:/pjt/orchestration_v1 && PYTHONIOENCODING=utf-8 python -c "
+import json
+s = json.load(open('.claude/settings.json', encoding='utf-8'))
+print('Events:', list(s.get('hooks', {}).keys()))
+print()
+print('UserPromptSubmit:', s.get('hooks', {}).get('UserPromptSubmit', 'NOT_REGISTERED'))
+" 2>&1	Check UserPromptSubmit hook
+2026-05-11T16:42:58	cd C:/pjt/orchestration_v1 && PYTHONIOENCODING=utf-8 python .claude/scripts/build-korean-html-diagrams.py 2>&1 | tail -25 && PYTHONIOENCODING=utf-8 python .claude/scripts/build-intro-evolution-diagram.py 2>&1	Rebuild all 21 PNGs
+2026-05-11T16:51:08	cd C:/pjt/orchestration_v1 && PYTHONIOENCODING=utf-8 python .claude/scripts/build-intro-evolution-diagram.py 2>&1	Rebuild intro PNG
+2026-05-11T17:01:26	where tesseract 2>&1; PYTHONIOENCODING=utf-8 python -c "import pytesseract; print('pytesseract', pytesseract.__version__)" 2>&1; PYTHONIOENCODING=utf-8 python -c "import easyocr; print('easyocr OK')" 2>&1 | head -3	Check OCR tools available
+2026-05-11T17:02:39	PYTHONIOENCODING=utf-8 python -c "import fitz; print('PyMuPDF', fitz.__version__)" 2>&1 | head -3	Check PyMuPDF
+2026-05-11T17:13:30	cd C:/pjt/orchestration_v1 && PYTHONIOENCODING=utf-8 python .claude/scripts/build-intro-evolution-diagram.py 2>&1 | tail -2	Rebuild intro PNG
+2026-05-11T17:15:58	cd C:/pjt/orchestration_v1 && echo '{"tool_input":{"command":"python .claude/scripts/build-arch-lecture-doc.py"}}' | bash .claude/hooks/hook-09-ocr-verify.sh 2>&1 | head -15	Smoke test hook-09 docx-visual
+2026-05-11T17:18:59	cd C:/pjt/orchestration_v1 && git status --short 2>&1 | head -30	Check git status
+2026-05-11T17:19:03	cd C:/pjt/orchestration_v1 && git status --short 2>&1 | wc -l	Count changes
+2026-05-11T17:19:08	cd C:/pjt/orchestration_v1 && git status --short 2>&1 | tail -50	Tail of changes
+2026-05-11T17:19:23	cd C:/pjt/orchestration_v1 && git log --oneline -5 2>&1	Recent commit style
+2026-05-11T17:21:57	tasklist 2>/dev/null | grep -i winword || echo "Word closed"	Check Word closed
+2026-05-11T17:25:16	tasklist 2>/dev/null | grep -i winword; taskkill /IM winword.exe /F 2>&1 | head -3	Force close Word
+2026-05-11T17:25:21	cmd //c "taskkill /IM winword.exe /F" 2>&1 | head -3	Force kill Word via cmd
+2026-05-11T17:25:28	cd C:/pjt/orchestration_v1/docs && ls -la | grep -E "(lecture|~\\\$)" 2>&1 | head -10	Check lock files
+2026-05-11T17:33:02	tasklist 2>/dev/null | grep -i winword	Check Word
+2026-05-12T08:52:29	cmd //c "taskkill /IM winword.exe /F" 2>&1 | head -3 && sleep 2 && tasklist 2>/dev/null | grep -i winword || echo "Word closed"	Force kill Word
+2026-05-12T09:45:37	cd C:/pjt/orchestration_v1 && git checkout .claude/scripts/build-intro-evolution-diagram.py 2>&1 | tail -2	Revert builder change
+2026-05-12T09:59:09	cd C:/pjt/orchestration_v1 && PYTHONIOENCODING=utf-8 python .claude/scripts/build-intro-evolution-diagram.py 2>&1 | tail -1 && PYTHONIOENCODING=utf-8 python .claude/scripts/verify-image-whitespace.py docs/screens/arch-kor/00-ai-evolution.png 2>&1	Rebuild + whitespace check
+2026-05-12T10:09:47	cd C:/pjt/orchestration_v1 && PYTHONIOENCODING=utf-8 python .claude/scripts/verify-image-whitespace.py docs/screens/arch-kor 2>&1	All 21 PNG whitespace
+2026-05-12T10:10:08	cd C:/pjt/orchestration_v1 && grep -n "body{" .claude/scripts/build-korean-html-diagrams.py | head -3	Find body CSS
+2026-05-12T10:11:14	cd C:/pjt/orchestration_v1 && PYTHONIOENCODING=utf-8 python .claude/scripts/build-intro-evolution-diagram.py 2>&1 | tail -1 && PYTHONIOENCODING=utf-8 python .claude/scripts/build-korean-html-diagrams.py 2>&1 | tail -3 && PYTHONIOENCODING=utf-8 python .claude/scripts/verify-image-whitespace.py docs/screens/arch-kor 2>&1	Rebuild all 21 PNGs + whitespace check
+2026-05-12T10:11:48	cd C:/pjt/orchestration_v1 && grep -n "body {" .claude/scripts/build-korean-html-diagrams.py | head -3	Find body CSS
+2026-05-12T10:12:30	cd C:/pjt/orchestration_v1 && PYTHONIOENCODING=utf-8 python .claude/scripts/build-korean-html-diagrams.py 2>&1 | tail -3 && PYTHONIOENCODING=utf-8 python .claude/scripts/verify-image-whitespace.py docs/screens/arch-kor 2>&1	Rebuild 20 PNGs + check
+2026-05-12T10:13:12	cd C:/pjt/orchestration_v1 && PYTHONIOENCODING=utf-8 python .claude/scripts/build-korean-html-diagrams.py 2>&1 | tail -2 && PYTHONIOENCODING=utf-8 python .claude/scripts/verify-image-whitespace.py docs/screens/arch-kor 2>&1	Rebuild + check
+2026-05-12T10:17:12	cd C:/pjt/orchestration_v1 && PYTHONIOENCODING=utf-8 python .claude/scripts/build-intro-evolution-diagram.py 2>&1 | tail -1 && PYTHONIOENCODING=utf-8 python .claude/scripts/verify-image-whitespace.py docs/screens/arch-kor/00-ai-evolution.png 2>&1	Rebuild + whitespace
+2026-05-12T10:20:48	PYTHONIOENCODING=utf-8 python -c "import easyocr" 2>&1 | head -2; where tesseract 2>&1 | head -2; PYTHONIOENCODING=utf-8 pip install easyocr 2>&1 | tail -3	Install easyocr
+2026-05-12T10:21:54	cd C:/pjt/orchestration_v1 && PYTHONIOENCODING=utf-8 python .claude/scripts/build-intro-evolution-diagram.py 2>&1 | tail -1 && PYTHONIOENCODING=utf-8 python .claude/scripts/verify-image-whitespace.py docs/screens/arch-kor/00-ai-evolution.png 2>&1	Rebuild + check
+2026-05-12T10:26:10	cd C:/pjt/orchestration_v1 && PYTHONIOENCODING=utf-8 python .claude/scripts/build-intro-evolution-diagram.py 2>&1 | tail -1 && PYTHONIOENCODING=utf-8 python .claude/scripts/verify-image-whitespace.py docs/screens/arch-kor/00-ai-evolution.png 2>&1	Rebuild + whitespace
+2026-05-12T10:38:19	cd C:/pjt/orchestration_v1 && PYTHONIOENCODING=utf-8 python .claude/scripts/build-intro-evolution-diagram.py 2>&1 | tail -1 && PYTHONIOENCODING=utf-8 python .claude/scripts/verify-image-whitespace.py docs/screens/arch-kor/00-ai-evolution.png 2>&1	Rebuild + whitespace
+2026-05-12T10:39:29	cd C:/pjt/orchestration_v1 && PYTHONIOENCODING=utf-8 python .claude/scripts/build-korean-html-diagrams.py 2>&1 | tail -2 && PYTHONIOENCODING=utf-8 python .claude/scripts/verify-image-whitespace.py docs/screens/arch-kor 2>&1	Rebuild + check
+2026-05-12T10:43:21	cd C:/pjt/orchestration_v1 && PYTHONIOENCODING=utf-8 python .claude/scripts/build-intro-evolution-diagram.py 2>&1 | tail -1 && PYTHONIOENCODING=utf-8 python .claude/scripts/verify-image-whitespace.py docs/screens/arch-kor/00-ai-evolution.png 2>&1	Rebuild + check
+2026-05-12T10:44:35	cd C:/pjt/orchestration_v1 && PYTHONIOENCODING=utf-8 python .claude/scripts/build-korean-html-diagrams.py 2>&1 | tail -2 && PYTHONIOENCODING=utf-8 python .claude/scripts/verify-image-whitespace.py docs/screens/arch-kor 2>&1	Rebuild all + check
+2026-05-12T10:45:27	cd C:/pjt/orchestration_v1 && PYTHONIOENCODING=utf-8 python .claude/scripts/build-korean-html-diagrams.py 2>&1 | tail -2 && PYTHONIOENCODING=utf-8 python .claude/scripts/verify-image-whitespace.py docs/screens/arch-kor 2>&1	Rebuild + check
+2026-05-12T10:46:40	cd C:/pjt/orchestration_v1 && grep -n "flow-icon-box\|.card {" .claude/scripts/build-korean-html-diagrams.py | head -5	Find layout sizes
+2026-05-12T10:47:06	cd C:/pjt/orchestration_v1 && PYTHONIOENCODING=utf-8 python .claude/scripts/build-korean-html-diagrams.py 2>&1 | tail -2 && PYTHONIOENCODING=utf-8 python .claude/scripts/verify-image-whitespace.py docs/screens/arch-kor 2>&1	Rebuild + check
+2026-05-12T10:54:31	cd C:/pjt/orchestration_v1 && grep -n "01-gen-vs-agentic\|02-5-cores\|13-api-protocols" .claude/scripts/build-korean-html-diagrams.py | head -5	Locate 3 pages
+2026-05-12T10:55:34	cd C:/pjt/orchestration_v1 && grep -n "context-arrow\|flow-num " .claude/scripts/build-korean-html-diagrams.py | head -3	Find css
+2026-05-12T10:56:09	cd C:/pjt/orchestration_v1 && PYTHONIOENCODING=utf-8 python .claude/scripts/build-korean-html-diagrams.py 2>&1 | tail -2 && PYTHONIOENCODING=utf-8 python .claude/scripts/verify-image-whitespace.py docs/screens/arch-kor 2>&1	Rebuild + check
+2026-05-12T10:57:28	cd C:/pjt/orchestration_v1 && grep -n "\.banner " .claude/scripts/build-korean-html-diagrams.py | head -3	Find banner CSS
+2026-05-12T10:58:01	cd C:/pjt/orchestration_v1 && PYTHONIOENCODING=utf-8 python .claude/scripts/build-korean-html-diagrams.py 2>&1 | tail -2 && PYTHONIOENCODING=utf-8 python .claude/scripts/verify-image-whitespace.py docs/screens/arch-kor 2>&1	Rebuild + check
+2026-05-12T11:02:39	cd C:/pjt/orchestration_v1 && PYTHONIOENCODING=utf-8 python .claude/scripts/build-korean-html-diagrams.py 2>&1 | tail -2 && PYTHONIOENCODING=utf-8 python .claude/scripts/verify-image-whitespace.py docs/screens/arch-kor 2>&1 | tail -3	Rebuild + check
+2026-05-12T11:03:50	cd C:/pjt/orchestration_v1 && PYTHONIOENCODING=utf-8 python .claude/scripts/build-korean-html-diagrams.py 2>&1 | tail -1 && PYTHONIOENCODING=utf-8 python .claude/scripts/verify-image-whitespace.py docs/screens/arch-kor 2>&1 | tail -2	Rebuild + check
+2026-05-12T13:13:31	cd C:/pjt/orchestration_v1 && grep -n "flow-title\|flow-desc" .claude/scripts/build-korean-html-diagrams.py | head -3	Find flow text CSS
+2026-05-12T13:13:51	cd C:/pjt/orchestration_v1 && PYTHONIOENCODING=utf-8 python .claude/scripts/build-korean-html-diagrams.py 2>&1 | tail -2 && PYTHONIOENCODING=utf-8 python .claude/scripts/verify-image-whitespace.py docs/screens/arch-kor 2>&1 | tail -3	Rebuild + check
+2026-05-12T13:14:49	cd C:/pjt/orchestration_v1 && grep -n "10-zero-cost" .claude/scripts/build-korean-html-diagrams.py	Find 10-zero-cost
+2026-05-12T13:15:40	cd C:/pjt/orchestration_v1 && PYTHONIOENCODING=utf-8 python .claude/scripts/build-korean-html-diagrams.py 2>&1 | tail -1 && PYTHONIOENCODING=utf-8 python .claude/scripts/verify-image-whitespace.py docs/screens/arch-kor 2>&1 | tail -2	Rebuild + check
+2026-05-12T13:28:24	cd C:/pjt/orchestration_v1 && grep -n "15-complete-guide" .claude/scripts/build-korean-html-diagrams.py	Find ch15 in builder
+2026-05-12T13:35:13	cd C:/pjt/orchestration_v1 && grep -n "17-project-structure\|19-claude-md-design" .claude/scripts/build-korean-html-diagrams.py	Find ch17, ch19
+2026-05-12T13:53:19	cmd //c "taskkill /IM winword.exe /F" 2>&1 | head -1; cd C:/pjt/orchestration_v1 && PYTHONIOENCODING=utf-8 python .claude/scripts/build-korean-html-diagrams.py 2>&1 | tail -2 && PYTHONIOENCODING=utf-8 python .claude/scripts/verify-image-whitespace.py docs/screens/arch-kor 2>&1 | tail -10	Rebuild + new check
+2026-05-12T13:53:46	cd C:/pjt/orchestration_v1 && PYTHONIOENCODING=utf-8 python .claude/scripts/verify-image-whitespace.py docs/screens/arch-kor 2>&1 | head -20	Full output
+2026-05-12T13:54:27	cd C:/pjt/orchestration_v1 && PYTHONIOENCODING=utf-8 python .claude/scripts/verify-image-whitespace.py docs/screens/arch-kor 2>&1 | head -10	re-check
+2026-05-12T14:01:24	cd C:/pjt/orchestration_v1 && ls plugins/exec_orch/skills/ 2>&1 | head -5	List skills
+2026-05-12T14:01:51	cd C:/pjt/orchestration_v1 && wc -l plugins/exec_orch/skills/auto-layout-fit.md	Skill line count
+2026-05-12T14:14:59	cd C:/pjt/orchestration_v1 && grep -n "Gemini\|gemini-auto" plugins/exec_orch/skills/route_dispatch.md | head -8	Find Gemini in route_dispatch
+2026-05-12T14:30:07	cd C:/pjt/orchestration_v1 && PYTHONIOENCODING=utf-8 python -c "
+from pathlib import Path
+home = Path.home()
+print('home:', home)
+for d in (home/'.claude'/'projects').iterdir() if (home/'.claude'/'projects').exists() else []:
+    print(' ', d.name)
+"	Find memory dir
+2026-05-12T14:30:45	cd C:/pjt/orchestration_v1 && PYTHONIOENCODING=utf-8 python -c "
+from pathlib import Path
+import sys
+sys.path.insert(0, '.claude/scripts')
+import importlib.util
+spec = importlib.util.spec_from_file_location('rm', '.claude/scripts/recall-memory.py')
+rm = importlib.util.module_from_spec(spec); spec.loader.exec_module(rm)
+print('mem dir:', rm.find_memory_dir())
+files = list((rm.find_memory_dir() or Path('.')).glob('feedback_*.md'))
+print('files:', len(files), files[:3])
+" 2>&1	debug memory finder
+2026-05-12T14:31:34	cd C:/pjt/orchestration_v1 && PYTHONIOENCODING=utf-8 python -c "
+import importlib.util
+spec = importlib.util.spec_from_file_location('rm', '.claude/scripts/recall-memory.py')
+rm = importlib.util.module_from_spec(spec); spec.loader.exec_module(rm)
+print('CANDIDATES:', rm.MEMORY_DIR_CANDIDATES)
+print('first exists:', rm.MEMORY_DIR_CANDIDATES[0].exists() if rm.MEMORY_DIR_CANDIDATES else 'none')
+print('find:', rm.find_memory_dir())
+"	Debug candidate gen
+2026-05-12T14:40:06	cd C:/pjt/orchestration_v1 && PYTHONIOENCODING=utf-8 python -c "
+import sqlite3
+conn = sqlite3.connect('.claude/state/orca.db')
+cur = conn.execute('SELECT ts, keywords FROM decisions ORDER BY id DESC LIMIT 5')
+for r in cur.fetchall():
+    print(r)
+cur = conn.execute(\"SELECT COUNT(*) FROM decisions WHERE keywords LIKE '%吏ㅻ젮%'\")
+print('count:', cur.fetchone()[0])
+"	debug
+2026-05-12T14:45:39	cd C:/pjt/orchestration_v1 && git log --oneline origin/main..HEAD 2>&1 | head -10 && echo "---" && git status -sb | head -3	Check unpushed commits
+2026-05-12T14:47:19	cd C:/pjt/orchestration_v1 && git push origin main 2>&1 | tail -5	Push 23 commits
+2026-05-12T14:49:08	cd C:/pjt/orchestration_v1 && PYTHONIOENCODING=utf-8 python .claude/scripts/track-determinism.py "肄붾뱶 由щ럭" "寃곌낵 A" --ai claude --task-type code_implementation --temp 0 2>&1 && echo "---" && PYTHONIOENCODING=utf-8 python .claude/scripts/track-determinism.py "肄붾뱶 由щ럭" "寃곌낵 B" --ai claude --task-type code_implementation --temp 0.5 2>&1	Smoke determinism
+2026-05-12T14:52:55	cd C:/pjt/orchestration_v1 && git push origin main 2>&1 | tail -3 && echo "---" && git log --oneline origin/main..HEAD | head -3 || echo "all pushed"	Push
+2026-05-12T15:36:07	where nvidia-smi 2>&1 | head -1; nvidia-smi --query-gpu=name,memory.total,driver_version --format=csv,noheader 2>&1 | head -3; echo "---" && PYTHONIOENCODING=utf-8 python -c "
+import psutil
+print(f'RAM: {psutil.virtual_memory().total / (1024**3):.1f} GB')
+print(f'CPU cores: {psutil.cpu_count()} ({psutil.cpu_count(logical=False)} physical)')
+"	Detect current system specs
+2026-05-12T15:36:55	cd C:/pjt/orchestration_v1 && PYTHONIOENCODING=utf-8 python .claude/scripts/detect-system.py --force 2>&1	Detect specs
+2026-05-12T15:37:04	PYTHONIOENCODING=utf-8 pip install chromadb 2>&1 | tail -3	Install chromadb
+2026-05-12T15:37:13	PYTHONIOENCODING=utf-8 python -c "import chromadb; print('chromadb', chromadb.__version__)" 2>&1	Verify chromadb
+2026-05-12T15:37:54	cd C:/pjt/orchestration_v1 && PYTHONIOENCODING=utf-8 python .claude/scripts/rag-recall.py --build 2>&1 | tail -3	Build RAG index
+2026-05-12T16:08:12	cd C:/pjt/orchestration_v1 && ls plugins/ai_rag plugins/exec_offline 2>&1 | head -10	Check existing
+2026-05-12T16:08:21	cd C:/pjt/orchestration_v1 && cat plugins/ai_rag/plugin.json 2>&1 | head -15 && echo "---" && ls plugins/exec_offline/ 2>&1	Check structure
+2026-05-12T16:08:31	cd C:/pjt/orchestration_v1 && ls plugins/ai_rag/scripts plugins/exec_offline/scripts plugins/ai_rag/commands plugins/exec_offline/commands plugins/ai_rag/skills plugins/exec_offline/skills 2>&1 | head -30	Check sub dirs
+2026-05-12T16:09:51	cd C:/pjt/orchestration_v1 && PYTHONIOENCODING=utf-8 python .claude/scripts/validate-plugin-schema.py ai_rag exec_offline 2>&1 | tail -10	Validate schemas
+2026-05-12T16:10:01	cd C:/pjt/orchestration_v1 && PYTHONIOENCODING=utf-8 python .claude/scripts/validate-plugin-schema.py 2>&1 | tail -8	Validate all
+2026-05-12T16:12:44	cd C:/pjt/orchestration_v1 && PYTHONIOENCODING=utf-8 python -c "
+import json
+from pathlib import Path
+for plug in ['exec_scheduler', 'design_web', 'design_pdf']:
+    pj = Path(f'plugins/{plug}/plugin.json')
+    data = json.loads(pj.read_text(encoding='utf-8'))
+    data['status'] = 'stable'
+    data['version'] = '1.0'
+    pj.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding='utf-8')
+    print(f'{plug}: stable v1.0')
+" && PYTHONIOENCODING=utf-8 python .claude/scripts/validate-plugin-schema.py 2>&1 | tail -3	Set 3 stable + validate
+2026-05-12T16:15:12	cd C:/pjt/orchestration_v1 && PYTHONIOENCODING=utf-8 python -c "
+import json
+from pathlib import Path
+for plug in ['cost_youtube', 'mcp_social', 'design_video', 'mcp_queue', 'music_studio']:
+    pj = Path(f'plugins/{plug}/plugin.json')
+    data = json.loads(pj.read_text(encoding='utf-8'))
+    data['status'] = 'stable'
+    data['version'] = '1.0'
+    pj.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding='utf-8')
+    print(f'{plug}: stable v1.0')
+" && PYTHONIOENCODING=utf-8 python .claude/scripts/validate-plugin-schema.py 2>&1 | tail -3	Set 5 stable + validate
+2026-05-12T16:24:06	cd C:/pjt/orchestration_v1 && cat .claude/hooks/hook-09-ocr-verify.sh | grep -c "verify-image\|RAG\|rag-recall" 2>&1	Check hook-09 current
+2026-05-12T16:24:34	cd C:/pjt/orchestration_v1 && tail -5 .claude/hooks/hook-09-ocr-verify.sh	tail hook
+2026-05-12T16:26:03	cd C:/pjt/orchestration_v1 && bash .claude/hooks/check-workers.sh 2>&1 && echo "---" && echo '{"tool_input":{"command":"git commit -m test"}}' | bash .claude/hooks/secret-scan.sh 2>&1 | head -3 && echo "---" && echo '{"tool_input":{"command":"python build-arch-lecture-doc.py"}}' | bash .claude/hooks/hook-09-ocr-verify.sh 2>&1 | tail -3	Smoke test 3 hooks
+2026-05-12T16:30:43	cd C:/pjt/orchestration_v1 && PYTHONIOENCODING=utf-8 python .claude/scripts/update-claude-md.py 2>&1 | head -10 && echo "---" && PYTHONIOENCODING=utf-8 python .claude/scripts/cost-dashboard.py 2>&1 | head -5 && echo "---" && bash .claude/scripts/smoke-test.sh 2>&1 | tail -5	Smoke tests
+2026-05-12T16:33:29	cd C:/pjt/orchestration_v1 && git status -sb 2>&1 | head -10	git status
+2026-05-12T16:58:25	cd C:/pjt/orchestration_v1 && ls plugins/exec_orch/hooks/hook-08* 2>&1 | head -5 && echo "---" && grep -i "hook-08\|ai-handoff" .claude/settings.json 2>&1 | head -3	Check hook-08 existence
+2026-05-12T16:58:38	cd C:/pjt/orchestration_v1 && head -30 plugins/exec_orch/hooks/hook-08-ai-handoff.sh 2>&1 && echo "---" && head -10 plugins/exec_orch/hooks/hook-08-ai-handoff.md 2>&1	Read hook-08
+2026-05-12T16:58:54	cd C:/pjt/orchestration_v1 && bash plugins/exec_orch/hooks/hook-08-ai-handoff.sh claude-to-codex 2>&1 | tail -3	Smoke test hook-08
+2026-05-12T17:05:49	cd C:/pjt/orchestration_v1 && ls C:/pjt/teamclaude 2>&1 | head -10 || echo "no teamclaude"	Check teamclaude folder
+2026-05-12T17:06:00	ls C:/pjt/orchestration_v1_team 2>&1 | head -10 || echo "no orchestration_v1_team folder"	Check team folder

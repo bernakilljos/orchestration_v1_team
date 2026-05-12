@@ -12,10 +12,19 @@
 ;   ○ Codex 단독 (Claude 없이)
 ;   ○ Gemini 단독 (Claude 없이)
 ;   ○ 사용자 지정
+;
+; ==== Edition 분기 (v1 vs team) ====
+;   v1 (main)  — docs/ini/github.ini 에 PAT 이미 있음 → PAT 입력 페이지 자동 SKIP
+;   team       — ini 없거나 placeholder        → 마법사 입력 받아 ini 생성
+;   분기 함수: HasExistingPat() (Pascal Script § Code)
+;
+; ==== Versioning ====
+;   1.0  — 초기 14 stable + 7 spec-only
+;   1.1  — exec_remote (4주차 VPS) 추가, mcp_collab 에 Telegram 통합 (2026-05-07)
 ; =====================================================
 
 #define MyAppName "Orchestration Kit"
-#define MyAppVersion "1.0"
+#define MyAppVersion "1.1"
 #define MyAppPublisher "Multi-AI Orchestration"
 #define MyAppURL "https://github.com/bernakilljos/orchestration"
 
@@ -25,7 +34,14 @@ AppName={#MyAppName}
 AppVersion={#MyAppVersion}
 AppPublisher={#MyAppPublisher}
 AppSupportURL={#MyAppURL}
-DefaultDirName=C:\work\new_project
+; 기본값: 현재 사용자의 프로필 아래 pjt 폴더 ({userprofile} 동적 — 하드코딩 X)
+;   예) %USERNAME% PC → %USERPROFILE%\pjt (런타임 자동 치환)
+; Browse 로 다른 폴더 선택 시 그 폴더 그대로 사용 (AppendDefaultDirName=no)
+DefaultDirName={%USERPROFILE}\pjt
+; 사용자가 Browse 로 선택한 폴더에 AppName 자동 추가 금지 — 선택한 폴더 그대로 사용
+AppendDefaultDirName=no
+; 이전 install 경로 우선 사용 금지 — 항상 DefaultDirName 사용
+UsePreviousAppDir=no
 DefaultGroupName={#MyAppName}
 DisableProgramGroupPage=yes
 Compression=lzma2/max
@@ -144,6 +160,7 @@ Filename: "{cmd}"; Parameters: "/c ""{tmp}\setup-modules\06-prereqs.bat"""; Stat
 Filename: "{cmd}"; Parameters: "/c ""{tmp}\setup-modules\07-github.bat"" ""{app}"""; StatusMsg: "Git / GitHub 설정..."; Components: github; Flags: runhidden waituntilterminated
 Filename: "{cmd}"; Parameters: "/c ""{tmp}\setup-modules\08-plugins.bat"" ""{app}"" ""{app}\"""; StatusMsg: "Claude 플러그인 설치..."; Components: plugins; Flags: runhidden waituntilterminated
 Filename: "{cmd}"; Parameters: "/c ""{tmp}\setup-modules\11-media-enhance.bat"" ""{app}"""; StatusMsg: "미디어 의존성 설치..."; Components: mediaenhance; Flags: runhidden waituntilterminated
+Filename: "{cmd}"; Parameters: "/c ""{tmp}\setup-modules\14-mcp-figma.bat"""; StatusMsg: "ClaudeTalkToFigma MCP 등록..."; Components: claude_orch; Flags: runhidden waituntilterminated
 
 ; --- Codex standalone (codex_env 선택 + claude_orch 미선택 시) ---
 Filename: "{cmd}"; Parameters: "/c ""{app}\install_codex.bat"" ""{app}"""; StatusMsg: "Codex Standalone 환경 구성..."; Components: codex_env; Check: NotClaudeOrch; Flags: runhidden waituntilterminated
@@ -177,17 +194,85 @@ Type: filesandordirs; Name: "{app}\tools"
 // Pascal Script
 // =====================================================
 
+// GitHub PAT 입력 페이지 (마법사 안에서 PAT 받기)
+var
+  PatPage: TInputQueryWizardPage;
+
+procedure InitializeWizard();
+begin
+  PatPage := CreateInputQueryPage(wpSelectComponents,
+    'GitHub Personal Access Token',
+    'GitHub 자동 push / repo 생성을 위해 PAT 가 필요합니다.',
+    '비워두면 SKIP — 설치는 진행되며 GitHub 자동 기능만 비활성됩니다.' + #13#10 +
+    'PAT 발급: https://github.com/settings/tokens (scope: repo + workflow)');
+  PatPage.Add('GitHub PAT (ghp_... 형식, 비우면 SKIP):', False);
+end;
+
 // codex/gemini standalone 모드 — Claude orchestration 미선택일 때만 install_*.bat 실행
 function NotClaudeOrch: Boolean;
 begin
   Result := not WizardIsComponentSelected('claude_orch');
 end;
 
+// 기존 PAT (docs/ini/github.ini) 가 이미 유효한 경우 PAT 입력 페이지 스킵
+// v1 (main) — 사용자 PAT 이미 ini 에 있음 → 묻지 않음
+// team — ini 없거나 placeholder → 입력 받음
+function HasExistingPat: Boolean;
+var
+  IniPath: string;
+  SrcPath: string;
+  IniContent: AnsiString;
+begin
+  Result := False;
+  SrcPath := ExpandConstant('{src}');
+  // setup.exe 가 ...\setup\Output\ 안일 때만 부모 폴더 ini 검사
+  if (Pos('\setup\Output', SrcPath) > 0) or (Pos('/setup/Output', SrcPath) > 0) then
+  begin
+    IniPath := SrcPath + '\..\..\docs\ini\github.ini';
+    if FileExists(IniPath) then
+    begin
+      if LoadStringFromFile(IniPath, IniContent) then
+      begin
+        // ghp_ 또는 github_pat_ 으로 시작하는 라인 존재하면 유효
+        if (Pos('GITHUB_PAT=ghp_', IniContent) > 0) or
+           (Pos('GITHUB_PAT=github_pat_', IniContent) > 0) then
+          Result := True;
+      end;
+    end;
+  end;
+end;
+
+function ShouldSkipPage(PageID: Integer): Boolean;
+begin
+  Result := False;
+  if (PatPage <> nil) and (PageID = PatPage.ID) then
+    Result := HasExistingPat;
+end;
+
 procedure CurStepChanged(CurStep: TSetupStep);
 var
   GitIgnorePath: string;
   Content: string;
+  IniPath: string;
+  IniDir: string;
+  PatValue: string;
 begin
+  if CurStep = ssInstall then
+  begin
+    // PAT 입력값을 docs/ini/github.ini 에 저장 (install/setup 흐름이 읽음)
+    PatValue := PatPage.Values[0];
+    if PatValue <> '' then
+    begin
+      IniDir := ExpandConstant('{app}\docs\ini');
+      IniPath := IniDir + '\github.ini';
+      ForceDirectories(IniDir);
+      Content := '# GitHub PAT (Inno Setup 마법사 입력 — ' + GetDateTimeString('yyyy-mm-dd hh:nn:ss', '-', ':') + ')' + #13#10 +
+                 '# 절대 git commit 금지 (.gitignore 됨)' + #13#10 +
+                 'GITHUB_PAT=' + PatValue + #13#10;
+      SaveStringToFile(IniPath, Content, False);
+    end;
+  end;
+
   if CurStep = ssPostInstall then
   begin
     // 모든 모드에서 .gitignore 생성

@@ -2,8 +2,8 @@
 # sync-plugins.sh v2 — plugins/ → .claude/ 단방향 동기화 + 고도화 검사
 #
 # 기능:
-#   1. 단방향 sync: plugins/<name>/{commands,skills}/*.md → .claude/{commands,skills}/
-#   2. 충돌 룰(rename map) 적용
+#   1. 단방향 sync: plugins/<name>/{commands,skills,agents}/*.md → .claude/{commands,skills,agents}/
+#   2. 충돌 룰(rename map) 적용 — 동명 파일 md5 동일이면 마지막 plugin 으로 idempotent 덮어쓰기
 #   3. Orphan 탐지: .claude/ 에만 있는 파일 경고
 #   4. Diff 상세: dry-run 시 내용 차이 표시
 #   5. 역방향 드리프트 감지: .claude/ 파일이 plugins/ 와 다르면 경고
@@ -63,6 +63,12 @@ declare -A RENAME_MAP=(
   ["mcp_social/commands/status.md"]="mcp_social-status.md"
   ["mcp_social/commands/auth.md"]="mcp_social-auth.md"
   ["mcp_queue/commands/install.md"]="mcp_queue-install.md"
+  ["exec_remote/commands/setup.md"]="exec_remote-setup.md"
+  ["exec_remote/commands/ssh.md"]="exec_remote-ssh.md"
+  ["exec_remote/commands/deploy.md"]="exec_remote-deploy.md"
+  ["exec_remote/commands/mobile.md"]="exec_remote-mobile.md"
+  ["exec_remote/commands/tmux.md"]="exec_remote-tmux.md"
+  ["exec_remote/commands/status.md"]="exec_remote-status.md"
 )
 
 # target_name → plugins/ 원본 경로 역맵 (orphan 탐지용)
@@ -159,10 +165,14 @@ for plugin in $ORDER; do
   plugin_dir="plugins/${plugin}/"
   [ -d "$plugin_dir" ] || continue
 
-  for sub in commands skills; do
+  for sub in commands skills agents; do
     if [ -d "${plugin_dir}${sub}" ]; then
       for f in "${plugin_dir}${sub}"/*.md; do
         [ -f "$f" ] || continue
+        # agents/README.md 같은 부속 문서는 skip (agent 정의가 아님)
+        case "$(basename "$f")" in
+          README.md|readme.md) continue ;;
+        esac
         sync_file "$f" "$sub"
       done
     fi
@@ -174,8 +184,23 @@ done
 # =========================================================================
 echo ""
 echo "=== Orphan 점검 ==="
+
+# 외부 plugin (marketplace 등) 파일은 .claude/orphan-allow.txt 에 등록
+# 한 줄에 한 파일 (파일명만, 예: 10x.md) — # 으로 시작하는 줄은 주석
+declare -A ORPHAN_ALLOW=()
+if [ -f ".claude/orphan-allow.txt" ]; then
+  while IFS= read -r line; do
+    line="${line%%#*}"
+    line="${line## }"
+    line="${line%% }"
+    line="${line%$'\r'}"
+    [ -z "$line" ] && continue
+    ORPHAN_ALLOW["$line"]=1
+  done < ".claude/orphan-allow.txt"
+fi
+
 orphan_list=()
-for sub in commands skills; do
+for sub in commands skills agents; do
   [ -d ".claude/${sub}" ] || continue
   for f in ".claude/${sub}"/*.md; do
     [ -f "$f" ] || continue
@@ -185,6 +210,10 @@ for sub in commands skills; do
       case "$(basename "$f")" in
         skill-0[0-9]-*.md|skill-[1-3][0-9]-*.md|skill-4[0-5]-*.md) continue ;;
       esac
+      # 외부 plugin allow 리스트는 제외
+      if [ -n "${ORPHAN_ALLOW[$(basename "$f")]:-}" ]; then
+        continue
+      fi
       orphan_list+=("$f")
       orphan=$((orphan+1))
     fi

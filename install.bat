@@ -19,17 +19,21 @@ echo     Done
 :SKIP_NPM_UNINSTALL
 
 rem --- Auto-elevate to administrator if not already ---
+rem (test 우회: SKIP_ELEVATION=1 환경변수 시 admin 검사 건너뜀)
+if "%SKIP_ELEVATION%"=="1" goto _ELEV_DONE
 net session >nul 2>&1
 if %errorlevel% neq 0 (
   echo Requesting administrator privileges...
   echo   ^(관리자 창이 열립니다. 이 창은 닫아도 됩니다.^)
   echo @echo off > "%TEMP%\_inst_elevate.bat"
+  echo chcp 65001 ^>nul >> "%TEMP%\_inst_elevate.bat"
   echo cd /d "%~dp0" >> "%TEMP%\_inst_elevate.bat"
   echo call "%~f0" %* >> "%TEMP%\_inst_elevate.bat"
   echo pause >> "%TEMP%\_inst_elevate.bat"
   powershell -NoProfile -Command "Start-Process cmd.exe -ArgumentList @('/k', '%TEMP%\_inst_elevate.bat') -Verb RunAs"
   exit /b
 )
+:_ELEV_DONE
 
 setlocal enabledelayedexpansion
 
@@ -40,7 +44,7 @@ echo  Install Log: %DATE% %TIME% >> "!LOGFILE!"
 echo ============================  >> "!LOGFILE!"
 
 rem --- 실제 로그인 사용자의 USERPROFILE 가져오기 (관리자 권한으로 올라가도 정확한 경로) ---
-echo (Get-WmiObject Win32_Process ^| Where-Object {$_.Name -eq 'explorer.exe'} ^| Select-Object -First 1).GetOwner().User > "%TEMP%\_orch_getuser.ps1"
+echo ^(Get-WmiObject Win32_Process ^| Where-Object {$_.Name -eq 'explorer.exe'} ^| Select-Object -First 1^).GetOwner^(^).User > "%TEMP%\_orch_getuser.ps1"
 for /f "tokens=*" %%N in ('powershell -NoProfile -ExecutionPolicy Bypass -File "%TEMP%\_orch_getuser.ps1"') do set "REAL_USERNAME=%%N"
 del "%TEMP%\_orch_getuser.ps1" >nul 2>&1
 if "!REAL_USERNAME!"=="" set "REAL_USERNAME=%USERNAME%"
@@ -195,6 +199,43 @@ if exist "%SCRIPT_DIR%templates\prd-template.md"   if not exist "%TARGET%\templa
 if exist "%SCRIPT_DIR%templates\api-template.md"   if not exist "%TARGET%\templates\api-template.md"   copy /Y "%SCRIPT_DIR%templates\api-template.md"   "%TARGET%\templates\api-template.md"   >nul 2>&1
 if exist "%SCRIPT_DIR%templates\screen-template.md" if not exist "%TARGET%\templates\screen-template.md" copy /Y "%SCRIPT_DIR%templates\screen-template.md" "%TARGET%\templates\screen-template.md" >nul 2>&1
 if exist "%SCRIPT_DIR%outputs\result-sample.md"    if not exist "%TARGET%\outputs\result-sample.md"    copy /Y "%SCRIPT_DIR%outputs\result-sample.md"    "%TARGET%\outputs\result-sample.md"    >nul 2>&1
+
+rem docs/ini/ — 내부 PC 전용, gitignore (PAT 등 시크릿)
+if not exist "%TARGET%\docs\ini" mkdir "%TARGET%\docs\ini" >nul 2>&1
+if exist "%SCRIPT_DIR%docs\ini" (
+  for %%F in ("%SCRIPT_DIR%docs\ini\*.*") do (
+    if not exist "%TARGET%\docs\ini\%%~nxF" copy /Y "%%F" "%TARGET%\docs\ini\%%~nxF" >nul 2>&1
+  )
+)
+rem github.ini 검사 — 없거나 비어있으면 placeholder 생성 + PAT 입력 안내
+set "INI_VALID=0"
+if exist "%TARGET%\docs\ini\github.ini" (
+  for /f "tokens=2 delims==" %%A in ('findstr /i "^GITHUB_PAT" "%TARGET%\docs\ini\github.ini" 2^>nul') do (
+    set "_PAT=%%A"
+    call :_check_pat
+  )
+)
+if "!INI_VALID!"=="1" goto _INI_OK
+(
+  echo # GitHub Personal Access Token
+  echo # - install/setup 에서 git commit/push 시 사용
+  echo # - PAT 발급: https://github.com/settings/tokens ^(scope: repo + workflow^)
+  echo.
+  echo GITHUB_PAT=ghp_YOUR_TOKEN_HERE
+) > "%TARGET%\docs\ini\github.ini"
+echo.
+echo       [!] docs\ini\github.ini 생성됨 — GITHUB_PAT 에 본인 토큰 입력하세요
+echo           ^(파일 열어서 ghp_YOUR_TOKEN_HERE 부분 교체^)
+goto _INI_DONE
+:_check_pat
+set "_PAT_TRIM=!_PAT: =!"
+if "!_PAT_TRIM!"=="" exit /b
+if "!_PAT_TRIM!"=="ghp_YOUR_TOKEN_HERE" exit /b
+set "INI_VALID=1"
+exit /b
+:_INI_OK
+echo       [OK] docs\ini\github.ini PAT 설정됨
+:_INI_DONE
 
 echo       Done
 
@@ -431,6 +472,13 @@ if not exist "!REAL_USERPROFILE!\.claude" mkdir "!REAL_USERPROFILE!\.claude" >nu
 powershell -NoProfile -Command "$f = '!REAL_USERPROFILE!\.claude\settings.json'; if (Test-Path $f) { $j = Get-Content $f -Raw | ConvertFrom-Json } else { $j = [PSCustomObject]@{} }; if (-not $j.PSObject.Properties['permissions']) { $j | Add-Member -NotePropertyName 'permissions' -NotePropertyValue ([PSCustomObject]@{}) }; $j.permissions | Add-Member -NotePropertyName 'defaultMode' -NotePropertyValue 'bypassPermissions' -Force; $j | Add-Member -NotePropertyName 'skipDangerousModePermissionPrompt' -NotePropertyValue $true -Force; $j | Add-Member -NotePropertyName 'autoUpdatesChannel' -NotePropertyValue 'latest' -Force; $j | Add-Member -NotePropertyName 'checkpointingEnabled' -NotePropertyValue $true -Force; $j | ConvertTo-Json -Depth 10 | Set-Content $f -Encoding UTF8" >nul 2>&1
 echo       Done
 
+rem --- 프로젝트 레벨 settings.json 도 bypassPermissions 강제 (프로젝트가 글로벌 override 하므로 필수) ---
+if exist "%~dp0.claude\settings.json" (
+  echo [+] Project settings.json defaultMode = bypassPermissions...
+  powershell -NoProfile -Command "$f='%~dp0.claude\settings.json'; $j=Get-Content $f -Raw|ConvertFrom-Json; if(-not $j.PSObject.Properties['permissions']){$j|Add-Member -NotePropertyName 'permissions' -NotePropertyValue ([PSCustomObject]@{})}; $j.permissions|Add-Member -NotePropertyName 'defaultMode' -NotePropertyValue 'bypassPermissions' -Force; $j|ConvertTo-Json -Depth 10|Set-Content $f -Encoding UTF8" >nul 2>&1
+  echo       Done
+)
+
 rem --- 글로벌 커맨드 설치 (godmode, devil, 10x 등 13개) ---
 echo [+] Installing global slash commands...
 if not exist "!REAL_USERPROFILE!\.claude\commands" mkdir "!REAL_USERPROFILE!\.claude\commands" >nul 2>&1
@@ -452,10 +500,9 @@ echo       Done ^(MAX_THINKING=10000, AUTOCOMPACT=50%%, SUBAGENT=haiku^)
 echo [CHECKPOINT 1/3] %TIME% >> "!LOGFILE!"
 echo.
 echo ============================================================
-echo   [체크포인트 1/3] 기본 설치 완료
-echo   계속하려면 아무 키나 누르세요...
+echo   [체크포인트 1/3] 기본 설치 완료 — 3초 후 계속
 echo ============================================================
-pause >nul
+timeout /t 3 /nobreak >nul 2>&1
 
 rem --- Install Claude plugins ---
 echo [+] Installing Claude plugins...
@@ -530,6 +577,19 @@ echo [+] GitHub PAT 확인 중...
 set "FALLBACK_PAT="
 set "GITHUB_PAT="
 
+rem INI 경로 (PAT_GUIDE 메시지에서 사용 — TEAM mode 일 때도 표시)
+set "INI_DIR=%~dp0docs\ini"
+set "INI_FILE=%INI_DIR%\github.ini"
+
+rem TEAM mode auto-detect (orchestration_v1_team folder)
+rem In team mode, skip env var, force user to input own PAT
+set "TEAM_MODE=0"
+echo %~dp0 | findstr /i "orchestration_v1_team" >nul && set "TEAM_MODE=1"
+if "!TEAM_MODE!"=="1" (
+  echo       [TEAM mode] env var skip - input own PAT
+  goto _PAT_FROM_INI_OR_INPUT
+)
+
 rem 1) User 환경변수에 저장된 PAT 확인
 powershell -NoProfile -Command "[System.Environment]::GetEnvironmentVariable('GITHUB_PERSONAL_ACCESS_TOKEN','User')" > "%TEMP%\_ghpat_saved.txt" 2>nul
 set "SAVED_PAT="
@@ -546,34 +606,69 @@ if not "!SAVED_PAT!"=="" (
   echo [WARN] 저장된 PAT 가 유효하지 않습니다.
 )
 
+:_PAT_FROM_INI_OR_INPUT
+rem TEAM 모드면 ini fallback skip — 무조건 PAT 입력 prompt
+if "!TEAM_MODE!"=="1" goto PAT_GUIDE
+
 rem 2) docs/ini/github.ini 에서 읽기 (로컬 전용, gitignore)
+rem (INI_DIR/INI_FILE 은 위에서 이미 set)
 set "INI_PAT="
-if exist "%~dp0docs\ini\github.ini" (
-  for /f "tokens=2 delims==" %%A in ('findstr /i "GITHUB_PAT" "%~dp0docs\ini\github.ini" 2^>nul') do set "INI_PAT=%%A"
-  set "INI_PAT=!INI_PAT: =!"
+
+if not exist "%INI_DIR%" (
+  echo [ERROR] docs\ini\ 폴더가 없습니다
+  echo         생성 명령: mkdir "%INI_DIR%"
+  goto PAT_GUIDE
 )
-if not "!INI_PAT!"=="" (
-  echo       docs\ini\github.ini 에서 PAT 로드됨
-  powershell -NoProfile -Command "[System.Environment]::SetEnvironmentVariable('GITHUB_PERSONAL_ACCESS_TOKEN','!INI_PAT!','User')" >nul 2>&1
-  set "GITHUB_PAT=!INI_PAT!"
-  echo       GITHUB_PAT = saved [OK]
-  goto SKIP_GITHUB_PAT
+if not exist "%INI_FILE%" (
+  echo [ERROR] %INI_FILE% 파일이 없습니다
+  echo         아래 내용으로 작성하세요:
+  echo             GITHUB_PAT=ghp_YOUR_TOKEN_HERE
+  goto PAT_GUIDE
 )
 
-rem 3) 수동 입력 (선택)
+for /f "tokens=2 delims==" %%A in ('findstr /i "^GITHUB_PAT" "%INI_FILE%" 2^>nul') do set "INI_PAT=%%A"
+set "INI_PAT=!INI_PAT: =!"
+
+if "!INI_PAT!"=="" (
+  echo [ERROR] %INI_FILE% 에 GITHUB_PAT= 값이 비어있습니다
+  echo         예시: GITHUB_PAT=ghp_YOUR_TOKEN_HERE
+  goto PAT_GUIDE
+)
+
+echo       docs\ini\github.ini 에서 PAT 로드됨
+powershell -NoProfile -Command "[System.Environment]::SetEnvironmentVariable('GITHUB_PERSONAL_ACCESS_TOKEN','!INI_PAT!','User')" >nul 2>&1
+set "GITHUB_PAT=!INI_PAT!"
+echo       GITHUB_PAT = saved [OK]
+goto SKIP_GITHUB_PAT
+
+:PAT_GUIDE
+
+rem 3) PAT 없음 - 안내만 출력 (수동 입력 X)
 echo.
-echo [선택] GitHub Personal Access Token 입력
-echo        토큰 입력시: GitHub 저장소 자동 생성 가능
-echo        Enter 만:    GitHub 단계 SKIP, git init 까지만 (설치는 정상 진행)
-echo        발급 URL:    https://github.com/settings/tokens (repo 권한)
+echo ============================================================
+echo   해결 방법 ^(둘 중 하나^)
+echo ============================================================
 echo.
-set /p "MANUAL_PAT=  PAT 입력 (없으면 Enter): "
+echo   [방법 A] 환경변수 ^(권장 — 한 번만 설정^):
+echo       setx GITHUB_PERSONAL_ACCESS_TOKEN "ghp_YOUR_TOKEN_HERE"
+echo.
+echo   [방법 B] 파일 생성 ^(이 프로젝트 전용^):
+echo       1. mkdir "%INI_DIR%"
+echo       2. "%INI_FILE%" 작성:
+echo            GITHUB_PAT=ghp_YOUR_TOKEN_HERE
+echo.
+echo   PAT 발급: https://github.com/settings/tokens
+echo            ^(scope: repo + workflow^)
+echo ============================================================
+echo.
+set "MANUAL_PAT="
+set /p "MANUAL_PAT=  PAT 직접 입력 (Enter = SKIP): "
 if not "!MANUAL_PAT!"=="" (
   powershell -NoProfile -Command "[System.Environment]::SetEnvironmentVariable('GITHUB_PERSONAL_ACCESS_TOKEN','!MANUAL_PAT!','User')" >nul 2>&1
   set "GITHUB_PAT=!MANUAL_PAT!"
-  echo       [OK] PAT 저장됨 (User 환경변수)
+  echo       GITHUB_PAT = saved [OK]
 ) else (
-  echo       [SKIP] GitHub 저장소 생성 단계 — 토큰 미입력 (설치는 계속)
+  echo       [SKIP] PAT 없이 계속 — GitHub 자동 push/repo 비활성
 )
 
 :SKIP_GITHUB_PAT
@@ -586,10 +681,9 @@ if "!GITHUB_PAT!"=="" (
 echo [CHECKPOINT 2/3] %TIME% >> "!LOGFILE!"
 echo.
 echo ============================================================
-echo   [체크포인트 2/3] 플러그인/MCP/설정 완료
-echo   계속하려면 아무 키나 누르세요...
+echo   [체크포인트 2/3] 플러그인/MCP/설정 완료 — 3초 후 계속
 echo ============================================================
-pause >nul
+timeout /t 3 /nobreak >nul 2>&1
 
 rem -----------------------------------------
 rem GitHub 프로젝트 생성 + Git 초기화
@@ -613,15 +707,6 @@ if exist "%TARGET%\.git" (
 rem 프로젝트 이름 추출 (폴더명, 공백→하이픈)
 for %%P in ("%TARGET%") do set "PROJ_BASE=%%~nxP"
 set "PROJ_BASE=!PROJ_BASE: =-!"
-
-rem 토큰 없으면 git init 만 하고 GitHub 단계 SKIP
-if "!GITHUB_PAT!"=="" (
-  echo [SKIP] GitHub 저장소 생성 — 토큰 미입력
-  cd /d "%TARGET%"
-  git init >nul 2>&1
-  echo [OK] git init 완료 (원격 없음)
-  goto SKIP_GITHUB_INIT
-)
 
 rem GitHub 저장소 생성 (같은 이름 있으면 -2, -3 ... 순서로)
 echo [+] GitHub 저장소 생성 중: !PROJ_BASE! ...
@@ -666,9 +751,9 @@ rem --- MCP servers: CLAUDE_SETUP_GUIDE.md 가 Claude 첫 실행 시 자동 처�
 rem    install.bat에서는 MCP 설치 안 함 (claude mcp add가 TTY 대기로 hang 발생)
 rem
 rem    [Deferred Tools — MCP 토큰 최적화]
-rem    Claude Code 최신 버전은 MCP 스키마를 지연 로딩(Lazy Load)함.
-rem    세션 시작 시 도구 이름만 system-reminder에 나열 → 실제 호출 전
-rem    ToolSearch("select:도구이름")로 스키마 fetch → 미사용 도구 토큰 0.
+rem    Claude Code lazy-loads MCP schemas.
+rem    Tool names appear in system-reminder, schema fetched on actual call.
+rem    Unused tools cost 0 tokens (ToolSearch fetches on-demand).
 rem    별도 설정 불필요, autoUpdatesChannel=latest 유지 시 자동 적용됨.
 echo [+] MCP servers: Claude 첫 실행 시 CLAUDE_SETUP_GUIDE.md 자동 처리
 echo     ^(Deferred Tools 자동 적용 — MCP 토큰 폭발 방지^)
@@ -689,8 +774,8 @@ echo ============================================================
 where npm >nul 2>&1
 if not errorlevel 1 goto CHECK_CODEX
 echo Node.js not found.
-set /p "INSTALL_NODE=Node.js 설치? [Y/N] (기본:Y, 엔터=Y): "
-if /i "!INSTALL_NODE!"=="N" goto SKIP_NPM
+choice /c YN /n /m "Node.js 설치? [Y/N] (5초 후 자동 Y): " /t 5 /d Y
+if errorlevel 2 goto SKIP_NPM
 where winget >nul 2>&1
 if errorlevel 1 (
   echo [WARN] winget not found - install manually: https://nodejs.org
@@ -716,8 +801,8 @@ if not errorlevel 1 (
   echo [OK] codex already installed
   goto CHECK_GEMINI
 )
-set /p "INSTALL_CODEX=@openai/codex 설치? [Y/N] (기본:Y, 엔터=Y): "
-if /i "!INSTALL_CODEX!"=="N" goto CHECK_GEMINI
+choice /c YN /n /m "@openai/codex 설치? [Y/N] (5초 후 자동 Y): " /t 5 /d Y
+if errorlevel 2 goto CHECK_GEMINI
 echo [+] Installing @openai/codex...
 call npm install -g @openai/codex
 
@@ -727,8 +812,8 @@ if not errorlevel 1 (
   echo [OK] gemini already installed
   goto SKIP_NPM
 )
-set /p "INSTALL_GEMINI=@google/gemini-cli 설치? [Y/N] (기본:Y, 엔터=Y): "
-if /i "!INSTALL_GEMINI!"=="N" goto SKIP_NPM
+choice /c YN /n /m "@google/gemini-cli 설치? [Y/N] (5초 후 자동 Y): " /t 5 /d Y
+if errorlevel 2 goto SKIP_NPM
 echo [+] Installing @google/gemini-cli...
 call npm install -g @google/gemini-cli
 
@@ -899,8 +984,14 @@ if errorlevel 1 (
   )
 ) else (
   echo [OK] Claude Code already installed
-  echo [+] Checking for updates ^(60s timeout^)...
-  powershell -NoProfile -Command "$p=Start-Process 'winget' -ArgumentList @('upgrade','--id','Anthropic.ClaudeCode','--accept-source-agreements','--accept-package-agreements') -NoNewWindow -PassThru -ErrorAction SilentlyContinue; if($p){if(-not $p.WaitForExit(60000)){$p.Kill(); Write-Host '[WARN] winget upgrade timeout - 건너뜀'}else{Write-Host '[OK] Claude Code updated'}}" 2>nul
+  rem --- claude.exe 실행 중이면 winget 이 .exe 교체 못해 0x8a150003 발생 → skip ---
+  tasklist /FI "IMAGENAME eq claude.exe" 2>nul | findstr /I /B "claude.exe" >nul 2>&1
+  if errorlevel 1 (
+    echo [+] Checking for updates ^(120s timeout^)...
+    powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0.claude\scripts\claude-winget-upgrade.ps1" 2>nul
+  ) else (
+    echo       [SKIP] Update skipped — claude.exe is running. Close Claude Code first to update.
+  )
 )
 
 rem -----------------------------------------
@@ -921,26 +1012,25 @@ if errorlevel 1 (
   echo ============================================================
   goto INSTALL_DONE
 )
-echo   Claude를 지금 실행하시겠습니까?
+echo   Claude를 지금 실행하시겠습니까? (10초 후 자동 N)
 echo     [Y] 예 - 지금 바로 Claude 시작
 echo     [N] 아니오 - 창 닫기
 echo ============================================================
-set /p "RUN_CLAUDE=선택 [Y/N]: "
-if /i "!RUN_CLAUDE!"=="Y" (
-  cd /d "%TARGET%"
-  echo [OK] claude --dangerously-skip-permissions 실행 중...
-  echo.
-  claude --dangerously-skip-permissions
-)
+choice /c YN /n /m "선택 [Y/N]: " /t 10 /d N
+if errorlevel 2 goto INSTALL_DONE
+cd /d "%TARGET%"
+echo [OK] claude --dangerously-skip-permissions 실행 중...
+echo.
+claude --dangerously-skip-permissions
 
 :INSTALL_DONE
 echo.
 echo ============================================================
 echo   설치 완료. 로그: %TEMP%\orchestration-install.log
-echo   아무 키나 누르면 창이 닫힙니다.
+echo   3초 후 자동으로 창이 닫힙니다...
 echo ============================================================
 echo [DONE] %TIME% >> "!LOGFILE!" 2>&1
-pause
+timeout /t 3 /nobreak >nul 2>&1
 endlocal
 exit /b
 
@@ -958,7 +1048,7 @@ echo ============================================================
 echo   Delete Mode — status-push / remote-agent 제거
 echo ============================================================
 
-echo (Get-WmiObject Win32_Process ^| Where-Object {$_.Name -eq 'explorer.exe'} ^| Select-Object -First 1).GetOwner().User > "%TEMP%\_orch_getuser.ps1"
+echo ^(Get-WmiObject Win32_Process ^| Where-Object {$_.Name -eq 'explorer.exe'} ^| Select-Object -First 1^).GetOwner^(^).User > "%TEMP%\_orch_getuser.ps1"
 for /f "tokens=*" %%N in ('powershell -NoProfile -ExecutionPolicy Bypass -File "%TEMP%\_orch_getuser.ps1"') do set "REAL_USERNAME=%%N"
 del "%TEMP%\_orch_getuser.ps1" >nul 2>&1
 if "!REAL_USERNAME!"=="" set "REAL_USERNAME=%USERNAME%"
@@ -1006,7 +1096,7 @@ echo ============================================================
 echo   Restart Mode — 서비스 재시작만 수행
 echo ============================================================
 
-echo (Get-WmiObject Win32_Process ^| Where-Object {$_.Name -eq 'explorer.exe'} ^| Select-Object -First 1).GetOwner().User > "%TEMP%\_orch_getuser.ps1"
+echo ^(Get-WmiObject Win32_Process ^| Where-Object {$_.Name -eq 'explorer.exe'} ^| Select-Object -First 1^).GetOwner^(^).User > "%TEMP%\_orch_getuser.ps1"
 for /f "tokens=*" %%N in ('powershell -NoProfile -ExecutionPolicy Bypass -File "%TEMP%\_orch_getuser.ps1"') do set "REAL_USERNAME=%%N"
 del "%TEMP%\_orch_getuser.ps1" >nul 2>&1
 if "!REAL_USERNAME!"=="" set "REAL_USERNAME=%USERNAME%"

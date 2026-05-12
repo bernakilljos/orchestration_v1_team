@@ -4,15 +4,35 @@ rem =====================================================
 rem setup.bat - Orchestration Kit Modular Installer
 rem
 rem Usage:
-rem   setup.bat [path]                     Full (Claude+Codex+Gemini, default)
-rem   setup.bat full   [path]              Same as above
-rem   setup.bat codex  [path]              Codex 단독 (Claude 없이)
-rem   setup.bat gemini [path]              Gemini 단독 (Claude 없이)
-rem   setup.bat anl    [path]              Full + 소스 분석
-rem   setup.bat full anl [path]            Full + 소스 분석 (명시)
+rem   setup.bat                             GUI 마법사 자동 실행 (있을 때)
+rem   setup.bat --console [path]            콘솔 모드 강제 (GUI 무시)
+rem   setup.bat full   [path]               Full 콘솔 (Claude+Codex+Gemini)
+rem   setup.bat codex  [path]               Codex 단독 (Claude 없이)
+rem   setup.bat gemini [path]               Gemini 단독 (Claude 없이)
+rem   setup.bat anl    [path]               Full + 소스 분석
 rem
 rem Can also be called from setup.exe (Inno Setup)
 rem =====================================================
+
+rem --- GUI 자동 호출: 빌드된 setup.exe 가 있고 --console 아니면 GUI 마법사 띄움 ---
+if /i "%~1"=="--console" (
+  shift
+  goto SKIP_GUI
+)
+if /i "%~1"=="full" goto SKIP_GUI
+if /i "%~1"=="codex" goto SKIP_GUI
+if /i "%~1"=="gemini" goto SKIP_GUI
+if /i "%~1"=="anl" goto SKIP_GUI
+
+if exist "%~dp0Output\OrchestrationKit-Setup.exe" (
+  echo.
+  echo [+] GUI 마법사 실행 중...
+  echo     ^(콘솔 모드 강제: setup --console^)
+  start "" "%~dp0Output\OrchestrationKit-Setup.exe"
+  exit /b 0
+)
+
+:SKIP_GUI
 
 rem --- Uninstall old npm Claude Code (only for full mode) ---
 where volta >nul 2>&1
@@ -27,16 +47,20 @@ call npm uninstall -g @anthropic-ai/claude-code >nul 2>&1
 :SKIP_NPM_UNINSTALL
 
 rem --- Auto-elevate ---
+rem (test 우회: SKIP_ELEVATION=1 환경변수 시 admin 검사 건너뜀)
+if "%SKIP_ELEVATION%"=="1" goto _SETUP_ELEV_DONE
 net session >nul 2>&1
 if %errorlevel% neq 0 (
   echo Requesting administrator privileges...
   echo @echo off > "%TEMP%\_setup_elevate.bat"
+  echo chcp 65001 ^>nul >> "%TEMP%\_setup_elevate.bat"
   echo cd /d "%~dp0" >> "%TEMP%\_setup_elevate.bat"
   echo call "%~f0" %* >> "%TEMP%\_setup_elevate.bat"
   echo pause >> "%TEMP%\_setup_elevate.bat"
   powershell -NoProfile -Command "Start-Process cmd.exe -ArgumentList @('/k','%TEMP%\_setup_elevate.bat') -Verb RunAs"
   exit /b
 )
+:_SETUP_ELEV_DONE
 
 setlocal enabledelayedexpansion
 
@@ -47,7 +71,7 @@ echo  Setup Log: %DATE% %TIME%   >> "!LOGFILE!"
 echo ============================ >> "!LOGFILE!"
 
 rem --- Real user profile ---
-echo (Get-WmiObject Win32_Process ^| Where-Object {$_.Name -eq 'explorer.exe'} ^| Select-Object -First 1).GetOwner().User > "%TEMP%\_getuser.ps1"
+echo ^(Get-WmiObject Win32_Process ^| Where-Object {$_.Name -eq 'explorer.exe'} ^| Select-Object -First 1^).GetOwner^(^).User > "%TEMP%\_getuser.ps1"
 for /f "tokens=*" %%N in ('powershell -NoProfile -ExecutionPolicy Bypass -File "%TEMP%\_getuser.ps1"') do set "REAL_USERNAME=%%N"
 del "%TEMP%\_getuser.ps1" >nul 2>&1
 if "!REAL_USERNAME!"=="" set "REAL_USERNAME=%USERNAME%"
@@ -68,11 +92,24 @@ if not "%~1"=="" (set "TARGET=%~1") else (set "TARGET=%CD%")
 
 rem SCRIPT_DIR = orchestration kit root (parent of setup/)
 set "SETUP_DIR=%~dp0"
-for %%I in ("%SETUP_DIR%..") do set "SCRIPT_DIR=%%~fI\"
+rem SETUP_DIR 끝 \ 제거 → 그 path 의 parent dir 추출
+set "SETUP_DIR_NS=%SETUP_DIR:~0,-1%"
+for %%P in ("%SETUP_DIR_NS%") do set "SCRIPT_DIR=%%~dpP"
 
 :TRIM_TARGET
 if "!TARGET:~-1!"==" "  set "TARGET=!TARGET:~0,-1!" & goto TRIM_TARGET
 if "!TARGET:~-1!"=="\"  set "TARGET=!TARGET:~0,-1!" & goto TRIM_TARGET
+
+rem --- Self-install 방지: TARGET 이 setup 폴더면 부모 (kit root) 로 자동 변경 ---
+for %%I in ("%TARGET%") do set "TARGET_FULL=%%~fI"
+set "SETUP_DIR_NOSLASH=%SETUP_DIR:~0,-1%"
+if /i "!TARGET_FULL!"=="!SETUP_DIR_NOSLASH!" (
+  for %%I in ("%SCRIPT_DIR%.") do set "TARGET=%%~fI"
+  echo.
+  echo [INFO] Setup 폴더가 target 으로 지정됨. Kit root 로 자동 변경:
+  echo        !SETUP_DIR_NOSLASH! ^=^> !TARGET!
+  echo.
+)
 
 if not exist "%TARGET%" mkdir "%TARGET%" >nul 2>&1
 
@@ -105,6 +142,51 @@ if /i "!MODE!"=="gemini" (
   set ERR=!ERRORLEVEL!
   goto MODE_DONE
 )
+
+rem ════════════════════════════════════════════════════════
+rem  GitHub PAT 결정 (install.bat 와 통일된 흐름)
+rem ════════════════════════════════════════════════════════
+echo.
+echo [+] GitHub PAT 확인 중...
+
+set "GITHUB_PAT="
+set "TEAM_MODE=0"
+echo %~dp0 | findstr /i "orchestration_v1_team" >nul && set "TEAM_MODE=1"
+
+if "!TEAM_MODE!"=="1" (
+  echo       [TEAM mode] env var skip - input own PAT
+  goto _SETUP_PAT_INPUT
+)
+
+rem 1) env var
+powershell -NoProfile -Command "[System.Environment]::GetEnvironmentVariable('GITHUB_PERSONAL_ACCESS_TOKEN','User')" > "%TEMP%\_setup_ghpat.txt" 2>nul
+set /p "GITHUB_PAT=" < "%TEMP%\_setup_ghpat.txt"
+del "%TEMP%\_setup_ghpat.txt" >nul 2>&1
+if not "!GITHUB_PAT!"=="" (
+  echo       GITHUB_PAT = configured [OK]
+  goto _SETUP_PAT_DONE
+)
+
+:_SETUP_PAT_INPUT
+echo.
+echo ============================================================
+echo   해결 방법 ^(셋 중 하나^)
+echo ============================================================
+echo   [방법 A] setx GITHUB_PERSONAL_ACCESS_TOKEN "ghp_..."
+echo   [방법 B] %~dp0..\docs\ini\github.ini 작성: GITHUB_PAT=ghp_...
+echo   [방법 C] 지금 직접 입력 ^(Enter = SKIP^)
+echo   PAT 발급: https://github.com/settings/tokens
+echo ============================================================
+set "MANUAL_PAT="
+set /p "MANUAL_PAT=  PAT 입력 (Enter = SKIP): "
+if not "!MANUAL_PAT!"=="" (
+  set "GITHUB_PAT=!MANUAL_PAT!"
+  if "!TEAM_MODE!"=="0" powershell -NoProfile -Command "[System.Environment]::SetEnvironmentVariable('GITHUB_PERSONAL_ACCESS_TOKEN','!MANUAL_PAT!','User')" >nul 2>&1
+  echo       GITHUB_PAT = saved [OK]
+) else (
+  echo       [SKIP] PAT 없이 계속 - GitHub 자동 push/repo 비활성
+)
+:_SETUP_PAT_DONE
 
 rem ════════════════════════════════════════════════════════
 rem  Full Mode (Claude+Codex+Gemini)
@@ -163,9 +245,14 @@ echo [STEP] 09-finalize %TIME% >> "!LOGFILE!"
 call "%MOD%\09-finalize.bat" "%TARGET%" "%ANALYZE_MODE%"
 if errorlevel 1 set /a ERRORS+=1
 
-echo [Step 11/11] Media Enhance Dependencies...
+echo [Step 11/12] Media Enhance Dependencies...
 echo [STEP] 11-media-enhance %TIME% >> "!LOGFILE!"
 call "%MOD%\11-media-enhance.bat" "%TARGET%"
+if errorlevel 1 set /a ERRORS+=1
+
+echo [Step 12/12] ClaudeTalkToFigma MCP...
+echo [STEP] 14-mcp-figma %TIME% >> "!LOGFILE!"
+call "%MOD%\14-mcp-figma.bat"
 if errorlevel 1 set /a ERRORS+=1
 
 set "ERR=!ERRORS!"

@@ -1,32 +1,7 @@
 ============================================================
-  Orchestration Kit v1 — TEAM Edition Guide
+  Orchestration Kit v1 — Complete Guide
   Claude + Codex + Gemini Multi-AI Framework
 ============================================================
-
-  ※ TEAM 빌드 — 토큰·시크릿 없는 클린 배포본
-  ※ GitHub 토큰 없이도 설치 가능 (저장소 자동 생성만 SKIP)
-
-
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-  0. TEAM 모드 핵심 변경사항
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-
-  [GitHub 토큰] 선택사항이 됨
-    - 환경변수 GITHUB_PERSONAL_ACCESS_TOKEN 있으면 자동 사용
-    - docs/ini/github.ini 에 GITHUB_PAT=ghp_... 입력해도 됨
-    - 둘 다 없으면 install/setup 중 prompt 1번 (Enter 만 치면 SKIP)
-    - 토큰 미입력 시: git init 까지만, GitHub 저장소 생성 X
-
-  [제거된 것들 — 시작 시 깨끗한 상태]
-    - .env  /  .claude/settings.local.json  (개인 시크릿)
-    - .claude/state/orca.db                 (이전 사용자 상태)
-    - .claude/tasks/done/  /  locks/        (이전 작업 흔적)
-    - .claude/learning/  /  context-cache/  (개인 학습 캐시)
-    - outputs/                              (이전 결과물)
-
-  [원본 자동화도구 (orchestration_v1) 와 차이]
-    - 토큰 fallback 하드코딩 제거 (07-github.bat 클린)
-    - install.bat 의 GitHub 단계 — 토큰 없으면 자동 SKIP
 
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -63,18 +38,49 @@
     OrchestrationKit-Setup.exe /VERYSILENT /TYPE="codex_only"  /DIR="..."
     OrchestrationKit-Setup.exe /VERYSILENT /TYPE="gemini_only" /DIR="..."
 
-  [방법 D] 독립형 설치 스크립트 (v1.0.1+) — git 저장소에서 직접
+  [방법 D] 독립형 설치 스크립트 (v1) — git 저장소에서 직접
     Codex 단독:  install_codex.bat C:\work\myproject
     Gemini 단독: install_gemini.bat C:\work\myproject
     → .env.example 자동 생성, 토큰 로그 기능, 상세 가이드 포함
+    → install_codex/gemini.bat 는 PowerShell wrapper (한글 깨짐 방지)
+
+  [방법 E] Team 동기화 (인프라 본체 → 팀 폴더)
+    bash .claude/scripts/sync-to-team.sh
+    또는 슬래시: /sync-team
+    → orchestration_v1 → ../orchestration_v1_team 자동 복사
+    → 시크릿 (docs/ini/), 상태 (.claude/state/), 락 제외
 
   [모드별 사용 흐름]
     Full   →  cd <target>  →  claude
     Codex  →  cd <target>  →  codex-go "회원가입 페이지 만들어줘"
     Gemini →  cd <target>  →  gemini-go "이 코드 검증해줘"
 
+  [원격 24/7 운영 — 4주차 (신규 2026-05-07)]
+    PC 꺼져 있어도 클라우드에서 작동시키려면:
+      claude → /exec_remote-setup    Oracle Cloud Free Tier (4 OCPU·24GB 무료)
+      claude → /exec_remote-ssh      SSH 키 ED25519 + ~/.ssh/config 자동
+      claude → /exec_remote-deploy   bootstrap-vps.sh + 우리 킷 clone
+      claude → /exec_remote-mobile   Termius 등 스마트폰 원격 (iOS·Android)
+    상세: docs/2026-05-07/4주차-원격제어.md · plugins/exec_remote/README.md
+
   [서비스만 재시작]
     install.bat restart
+
+  [무인 진행 — 사용자 입력 0번]
+    install.bat 의 모든 prompt 자동화 (timeout default):
+      - 체크포인트 1/3, 2/3: 3초 후 자동 진행
+      - Node.js / codex / gemini 설치: 5초 후 자동 Y
+      - Claude 실행: 10초 후 자동 N
+      - 종료 pause: 3초 후 자동 닫기
+    test 우회: SKIP_ELEVATION=1 환경변수 (admin 검사 건너뜀)
+
+  [PAT 자동 처리 — install/setup 양쪽]
+    우선순위:
+      1. 환경변수 GITHUB_PERSONAL_ACCESS_TOKEN
+      2. docs/ini/github.ini 의 GITHUB_PAT=
+      3. 둘 다 없으면 docs/ini/ 폴더 + placeholder 자동 생성 + 안내
+    PAT 발급: https://github.com/settings/tokens (scope: repo + workflow)
+    docs/ini/ 는 .gitignore (시크릿 보호)
 
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -194,19 +200,26 @@
   6. 설치되는 것 — 전체 목록
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-  [Setup 모듈 — 12단계]
-    01 core            .claude 폴더 + CLAUDE.md 복사
+  [Setup 모듈 — 14단계 (현행 2026-05-07)]
+    01 core             .claude 폴더 + CLAUDE.md 복사
     02 defender         Windows Defender 예외
     03 settings         Claude 글로벌 설정 + PS UTF-8
-    04 commands         codex-a, gemini-a 글로벌 설치
+    04 commands         글로벌 명령어 9개:
+                          codex-a / codex-auto / codex-auto-global
+                          gemini-a / gemini-auto / gemini-auto-global
+                          claude-auto / haiku-auto / gemini-verify
+                        ※ haiku-auto 는 CLAUDE.md §3.2 기본 검증자
+                        ※ *-global 은 멀티 프로젝트 전역 큐 (~/.claude/orca/)
     05 services         status-push, remote-agent 등록
     06 prereqs          Node.js, Claude Code, Cloudflared
-    07 github           Git 초기화 + GitHub repo 생성
-    08 plugins          외부 커뮤니티 플러그인 자동 설치
+    07 github           Git 초기화 + GitHub repo 생성 (v1/team 자동 분기)
+    08 plugins          외부 커뮤니티 플러그인 + superpowers 자동 설치
     09 finalize         init, npm install, Claude 실행
     10 video-restore    CodeFormer + Real-ESRGAN
     11 media-enhance    오디오/PDF/PPT 의존성
     12 kit-sync         plugins/ to .claude/ 자동 동기화 + 스키마 검증
+    13 init-state-db    SQLite state DB 초기화 (워커·태스크·quota·budget)
+    14 mcp-figma        ClaudeTalkToFigma MCP 등록
 
   [플러그인 — 8개]
     claude-md-management     CLAUDE.md 품질 관리
@@ -307,13 +320,21 @@
     -- protect-critical-files config.py/settings.json 수정 차단
     -- post-impl-verify      구현 후 문법/인코딩/보호파일 자동 검증
 
-  [슬래시 커맨드 — 19개 (프로젝트 6 + 모드 13)]
+  [슬래시 커맨드 — 25개 (프로젝트 12 + 모드 13)]
     /check-agents          codex-auto / gemini-auto 가용 여부 확인
     /check-services        status-push / remote-agent 상태 확인
     /vibe-loop             멀티에이전트 루프 시작
     /orcauto-start         워커 자동 시작 활성화
     /orcauto-stop          워커 자동 시작 비활성화
     /loop-stop             실행 중인 모든 루프 중단
+
+    [원격 운영 — exec_remote (4주차, 신규)]
+    /exec_remote-setup     Oracle Free Tier 가입 + VM 생성 가이드
+    /exec_remote-ssh       SSH 키 ED25519 + ~/.ssh/config 등록
+    /exec_remote-deploy    VPS 부트스트랩 + 우리 킷 배포
+    /exec_remote-mobile    스마트폰 (iOS·Android) 접속 가이드
+    /exec_remote-tmux      tmux 영속 세션 패턴
+    /exec_remote-status    VPS 상태 한 화면 (핑·CPU/RAM·heartbeat)
 
     [모드 커맨드 — 13개 (커뮤니티 제작, 글로벌 설치)]
     /godmode               제한 없이 공격적·강력하게 실행 (aggressive mode)
@@ -420,7 +441,7 @@
     /plug_dev        GitHub·Docker·AWS·Firebase
     /plug_data       PostgreSQL·SQLite·MongoDB (로컬 기반)
     /plug_web        Playwright·Puppeteer·Fetch API
-    /plug_collab     Slack·Notion·Gmail·Calendar
+    /plug_collab     Slack·Notion·Jira·Trello·Telegram·Gmail·Calendar (3주차 알림)
     /plug_docs       PDF·DOCX·OCR (로컬 CLI 기반)
     /plug_media      Whisper·TTS·FFmpeg (로컬 CLI 기반)
     /plug_all        위 7개 순차 실행
@@ -504,9 +525,11 @@
   [한글 깨짐]
     → install.bat 재실행 (UTF-8 자동 적용)
 
-  [codex-a / gemini-a 못 찾음]
-    → install.bat 재실행 또는
-    → .claude\scripts\codex-a.bat 직접 실행
+  [codex-a / gemini-a / haiku-auto / *-global 못 찾음]
+    → install.bat 또는 setup.exe 재실행 (모듈 04 가 %APPDATA%\npm 으로 복사)
+    → 임시: .claude\scripts\<이름>.bat 직접 실행
+    → 2026-05-07 이전 빌드는 haiku-auto / codex-auto-global / gemini-auto-global
+      누락 가능 — git pull 후 재설치 필요
 
   [MCP 서버 누락]
     → claude mcp list로 확인
@@ -542,20 +565,28 @@
   각 플러그인 = commands/ + skills/ + agents/ + hooks/ + codex/ + rules.md
   파이프라인: Hook → Planner → Executor → Validator → State → Retry
 
-  [현재 플러그인 목록 — 버전 1.0]
-    exec_orch      오케스트레이션 핵심 (pipeline.md 참조)
-    exec_voice     음성 STT·TTS·회의록·음성 명령
-    exec_learning  세션 학습·실패 패턴·최적화 규칙
-    design_ppt     PPT (Claude→Canva→Mermaid→Figma)
-    design_excel   Excel (Claude→openpyxl→차트→Sheets)
-    design_word    Word (Claude→python-docx→Mermaid→PDF)
-    review_qa      코드 리뷰·보안·품질·테스트
-    mcp_dev        개발 MCP 설치 (GitHub·Docker·AWS·Vercel)
-    mcp_data       데이터 MCP 설치 (MySQL·MongoDB·BigQuery)
-    mcp_collab     협업 MCP 설치 (Slack·Notion·Jira)
-    mcp_web        웹자동화 MCP 설치 (Playwright·Puppeteer)
-    mcp_docs       문서처리 MCP 설치 (PDF·DOCX·OCR)
-    mcp_media      미디어 설치 (Whisper·TTS·FFmpeg)
+  [현재 플러그인 목록 — 26개 (16 stable + 10 spec-only, _template 제외)]
+    [Stable — 즉시 사용 가능]
+    exec_orch          오케스트레이션 핵심 (pipeline.md 참조)
+    exec_remote        원격 24/7 운영 — VPS·SSH·tmux·모바일 (4주차 신규 ⭐)
+    exec_claude        Claude 전용 심화 (질문폼·아티팩트·확장사고)
+    exec_voice         음성 STT·TTS·회의록·음성 명령
+    exec_learning      세션 학습·실패 패턴·최적화 규칙
+    exec_session_guard 세션 끊김 대비 스냅샷 자동 저장
+    design_ppt         PPT (Claude→Canva→Mermaid→Figma)
+    design_excel       Excel (Claude→openpyxl→차트→Sheets)
+    design_word        Word (Claude→python-docx→Mermaid→PDF)
+    review_qa          코드 리뷰·보안·품질·테스트
+    mcp_dev            개발 MCP 설치 (GitHub·Docker·AWS·Vercel)
+    mcp_data           데이터 MCP 설치 (PostgreSQL·MongoDB·BigQuery)
+    mcp_collab         협업 MCP (Slack·Notion·Jira·Trello·Telegram·Gmail·Calendar)
+    mcp_web            웹자동화 MCP (Playwright·Puppeteer)
+    mcp_docs           문서처리 MCP (PDF·DOCX·OCR)
+    mcp_media          미디어 (Whisper·TTS·FFmpeg)
+
+    [Spec-only — 향후 구현]
+    exec_offline / exec_scheduler / ai_rag / cost_youtube
+    design_pdf / design_video / design_web / mcp_queue / mcp_social / music_studio
 
   [접두사 규칙]
     exec_    실행·부트스트랩
@@ -796,17 +827,25 @@
       python .claude/scripts/render-screens.py              # all
       python .claude/scripts/render-screens.py arch-system  # one
 
+    활용:
+      our-arch/arch-system-overview.png  → README hero
+      our-func/func-cost-saving.png      → 마케팅 / 트윗
+      our-arch/arch-plugin-ecosystem.png → 플러그인 카탈로그 표지
+
   [PDF 신규 — design_pdf v0.2]
     /pdf-generate  HTML/CSS → Playwright → PDF
                    A4 (794×1123) · Letter (816×1056) · Digital (1920×1080)
                    print_background: true 필수 (배경 그라디언트)
                    wait_for_timeout(900~1500) (폰트·아이콘 로드)
+    /pdf-fill      PDF 양식(form) 자동 채우기
+    /pdf-sign      전자서명·직인 삽입
+    /pdf-secure    암호화·워터마크
     skill: skill-pdf-design-system (R51 신규) — 12 계명 + 함정 5 가지
 
   [핵심 원칙]
     - design_ppt / design_pdf / Screens 모두 동일 시각 톤
     - 표 8행+ 또는 폰트 16px 이하면 → 카드 그리드 변환
-    - 차트 막대 width 는 데이터 비율로 직접 계산
+    - 차트 막대 width 는 데이터 비율로 직접 계산 (예: width: 8.3%)
     - SVG `<defs>` 에 gradient + marker 미리 정의
     - 출력 후 PIL overflow 검증 + Read tool 로 OCR 직접 확인
 
@@ -819,7 +858,47 @@
   17. 추가 사항 요약
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-  2026-04-30 R51~R71 누적:
+  2026-05-11 안정성 + zero-touch 자동화 누적 (commit 11건):
+    ✓ Watchdog 메모리 누수·자살 로직 보강 (24371f0)
+       - Claude 세션 stale 시 watchdog 가 자살하던 로직 제거 (워커 유지)
+       - RSS+자식 합산 임계 모니터링 (default 2GB, --max-rss-mb)
+       - max-uptime 정책 (default 6h)
+       - psutil → tasklist → ps fallback
+       - kill_worker_tree (taskkill /T /F + killpg)
+       - 로그 백업 5개 회전 유지
+       - orca-status.sh task-instruction.md 템플릿 제외 카운팅
+    ✓ Hook 4개 추가 등록 (67664ff, b127d2b)
+       - PreToolUse Bash: block_dangerous_bash.py, log_bash_command.py
+       - PostToolUse Edit|Write: post_write_pycheck.py, markdown_formatter.py
+       - OS 인식 + 따옴표 안 자연어 무시 (commit msg false positive 해결)
+       - Windows cp949 인코딩 자동 회피 (UTF-8 강제)
+    ✓ Agents sync 추가 (aebdffe)
+       - sync-plugins.sh 가 commands/skills 만 처리하던 것 → agents 포함
+       - 누락 4개 복구: agent-01-judge, agent-07-code-reviewer, 08-test-runner, 09-explorer
+       - 동명 6 그룹 (총 27 인스턴스) md5 동일 — idempotent 덮어쓰기
+    ✓ External Watchdog (OS-level, Task Scheduler 1분 간격) (247b3e9, c22ab03, 72bc1cc)
+       - VSCode hang 외부 감지 (heartbeat 5분 정지 + VSCode 살아있음)
+       - SessionStart hook 으로 idempotent 자동 등록 (사용자 액션 0)
+       - VBS wrapper + Task Hidden 속성 → cmd 창 깜빡임 제거
+       - WATCHDOG_AUTO_RESTART=1 옵션 (강제 재시작, 디폴트 off)
+       - WATCHDOG_NOTIFY=1 옵션 (BurntToast 알림)
+    ✓ 협업 원칙 5중 박기 (247b3e9, fef1338, 330187e)
+       - 전수조사 의무 (전수조사·분석·실행·확인·보고 5단계)
+       - Zero-touch 자동화 (사용자 액션 요구 X, 알림은 크리티컬 5가지만)
+       - 하드 경로 금지 (사용자명·Python 버전·OS 절대경로 X, 동적 검색)
+       - Template kit 원칙 (orchestration_v1 = 공통 배포 kit, ~/.claude/ 직접 X)
+       - 박힌 위치: memory + CLAUDE.md + rules/{failure-mode,best-practices} + hook-00-init.sh
+    ✓ Global CLAUDE.md template + install 배포 (506216b)
+       - setup/templates/global-CLAUDE.md (3원칙 + 4번째 template kit 원칙)
+       - setup/modules/03-settings.bat 가 ~/.claude/CLAUDE.md 로 배포
+       - 기존 파일 .bak 백업 후 덮어쓰기
+    ✓ 하드 경로 wrapper 패턴 (330187e)
+       - audit-*.py 3개: C:/Users/ja205/AppData/Local/Temp/ → tempfile.gettempdir()
+       - external-watchdog Task Scheduler: python 풀패스 박는 대신 wrapper.bat
+         wrapper 가 매번 where python / py launcher / registry 순 동적 검색
+       - setup.iss 주석 placeholder 화
+
+  2026-04-30 R51~R71 누적 (43 슬라이드 PPT × 3종):
     ✓ 차트·SVG·카드 그리드 4 패턴 표준화 (skill § 13)
     ✓ Screens 워크플로우 신규 (docs/screens/our-html → PNG)
     ✓ design_pdf v0.2 — 디자인 시스템 공유 + 12 계명 신규
@@ -827,7 +906,12 @@
     ✓ render-screens.py — 단일 PNG 자동 분류 (arch-/func-)
     ✓ 어려운 영어 술어 → 쉬운 한글
        (24/7 → 쉬는 시간 없음, Backoff → 한도 대기, Best Practices → 운영 팁,
-        Watchdog → 감시자, Caching → 캐시)
+        Watchdog → 감시자, Heartbeat → 살아있나 신호, Caching → 캐시)
+    ✓ 본문 폰트 16→18px, TIP desc 14→18px (가독성 ↑)
+    ✓ TOC PART 이름 모두 한글화 (3 PPT)
+    ✓ Cover stat label 모두 한글화
+    ✓ 단일 *-guide.pptx 로 통합 (_디자인적용 suffix 삭제)
+    ✓ PIL 43/43 PASS
 
   2026-04-19 커밋 누적:
     ✓ 14개 허브 커맨드 description 한글 통일

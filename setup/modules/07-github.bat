@@ -1,13 +1,7 @@
 @echo off
 rem =====================================================
-rem Module 07: Git 초기화 + (선택) GitHub 저장소 생성
+rem Module 07: Git 초기화 + GitHub 저장소 생성
 rem Usage: 07-github.bat [TARGET]
-rem
-rem TEAM 배포 버전:
-rem   - 하드코딩 토큰 없음
-rem   - 환경변수 GITHUB_PERSONAL_ACCESS_TOKEN 있으면 사용
-rem   - 없으면 prompt (Enter 치면 skip)
-rem   - 어떤 경우에도 git init 은 됨
 rem =====================================================
 setlocal enabledelayedexpansion
 
@@ -19,70 +13,107 @@ echo [+] Git / GitHub setup...
 
 where git >nul 2>&1
 if errorlevel 1 (
-  echo       [WARN] git not found - skipping all
+  echo       [WARN] git not found - skipping
   goto DONE
 )
 
-rem --- Git init (항상 수행) ---
 if exist "%TARGET%\.git" (
   echo       [OK] Git already initialized
-) else (
-  cd /d "%TARGET%"
-  git init >nul 2>&1
-  if not errorlevel 1 echo       [OK] git init done
-)
-
-rem --- GitHub PAT 확인 ---
-set "GITHUB_PAT="
-powershell -NoProfile -Command "[System.Environment]::GetEnvironmentVariable('GITHUB_PERSONAL_ACCESS_TOKEN','User')" > "%TEMP%\_ghpat.txt" 2>nul
-set /p "GITHUB_PAT=" < "%TEMP%\_ghpat.txt"
-del "%TEMP%\_ghpat.txt" >nul 2>&1
-
-rem --- 환경변수에 없으면 prompt ---
-if "!GITHUB_PAT!"=="" (
-  echo.
-  echo       --------------------------------------------------------
-  echo       [선택] GitHub Personal Access Token 입력
-  echo       --------------------------------------------------------
-  echo       토큰을 입력하면 GitHub 저장소를 자동 생성합니다.
-  echo       Enter 만 치면 GitHub 단계를 SKIP 하고 git init 까지만 합니다.
-  echo.
-  echo       토큰 발급: https://github.com/settings/tokens (repo 권한)
-  echo.
-  set /p "GITHUB_PAT=      Token (없으면 Enter): "
-  if not "!GITHUB_PAT!"=="" (
-    powershell -NoProfile -Command "[System.Environment]::SetEnvironmentVariable('GITHUB_PERSONAL_ACCESS_TOKEN','!GITHUB_PAT!','User')" >nul 2>&1
-    echo       [OK] Token 저장됨 (User 환경변수)
-  )
-)
-
-rem --- 토큰 없으면 여기서 종료 ---
-if "!GITHUB_PAT!"=="" (
-  echo       [SKIP] GitHub 저장소 생성 단계 — 토큰 미입력
-  echo              나중에 직접 만들려면:
-  echo                set GITHUB_PERSONAL_ACCESS_TOKEN=ghp_...
-  echo                gh repo create  또는  git remote add origin ...
   goto DONE
 )
 
-rem --- GitHub repo 생성 ---
+rem --- GitHub PAT (env var → docs/ini/github.ini → SKIP) ---
+echo [+] GitHub PAT 확인 중...
+
+rem INI 경로
+set "INI_DIR=%~dp0..\..\docs\ini"
+set "INI_FILE=%INI_DIR%\github.ini"
+set "INI_PAT="
+
+rem TEAM mode auto-detect (orchestration_v1_team folder)
+set "TEAM_MODE=0"
+echo %~dp0 | findstr /i "orchestration_v1_team" >nul && set "TEAM_MODE=1"
+if "!TEAM_MODE!"=="1" (
+  echo       [TEAM mode] env var skip - input own PAT
+  goto _PAT_INI_OR_INPUT
+)
+
+rem 1) 환경변수 우선
+powershell -NoProfile -Command "[System.Environment]::GetEnvironmentVariable('GITHUB_PERSONAL_ACCESS_TOKEN','User')" > "%TEMP%\_ghpat.txt" 2>nul
+set "GITHUB_PAT="
+set /p "GITHUB_PAT=" < "%TEMP%\_ghpat.txt"
+del "%TEMP%\_ghpat.txt" >nul 2>&1
+if not "!GITHUB_PAT!"=="" (
+  echo       GITHUB_PAT = configured [OK]
+  goto PAT_READY
+)
+
+:_PAT_INI_OR_INPUT
+if "!TEAM_MODE!"=="1" goto PAT_GUIDE
+
+rem 2) docs/ini/github.ini 단계별 검사
+
+if not exist "%INI_DIR%" (
+  echo [ERROR] docs\ini\ 폴더가 없습니다
+  echo         생성: mkdir "%INI_DIR%"
+  goto PAT_GUIDE
+)
+if not exist "%INI_FILE%" (
+  echo [ERROR] %INI_FILE% 파일이 없습니다
+  echo         아래 내용으로 작성:
+  echo             GITHUB_PAT=ghp_YOUR_TOKEN_HERE
+  goto PAT_GUIDE
+)
+
+for /f "tokens=2 delims==" %%A in ('findstr /i "^GITHUB_PAT" "%INI_FILE%" 2^>nul') do set "INI_PAT=%%A"
+set "INI_PAT=!INI_PAT: =!"
+
+if "!INI_PAT!"=="" (
+  echo [ERROR] %INI_FILE% 의 GITHUB_PAT= 값이 비어있습니다
+  echo         예시: GITHUB_PAT=ghp_YOUR_TOKEN_HERE
+  goto PAT_GUIDE
+)
+
+echo       docs\ini\github.ini 에서 PAT 로드됨
+powershell -NoProfile -Command "[System.Environment]::SetEnvironmentVariable('GITHUB_PERSONAL_ACCESS_TOKEN','!INI_PAT!','User')" >nul 2>&1
+set "GITHUB_PAT=!INI_PAT!"
+echo       GITHUB_PAT = saved [OK]
+goto PAT_READY
+
+:PAT_GUIDE
+echo.
+echo ============================================================
+echo   해결 방법 ^(셋 중 하나^)
+echo ============================================================
+echo   [방법 A] setx GITHUB_PERSONAL_ACCESS_TOKEN "ghp_..."
+echo   [방법 B] %INI_FILE% 작성: GITHUB_PAT=ghp_...
+echo   [방법 C] 지금 직접 입력 ^(Enter = SKIP^)
+echo   PAT 발급: https://github.com/settings/tokens
+echo ============================================================
+set "MANUAL_PAT="
+set /p "MANUAL_PAT=  PAT 입력 (Enter = SKIP): "
+if not "!MANUAL_PAT!"=="" (
+  powershell -NoProfile -Command "[System.Environment]::SetEnvironmentVariable('GITHUB_PERSONAL_ACCESS_TOKEN','!MANUAL_PAT!','User')" >nul 2>&1
+  set "GITHUB_PAT=!MANUAL_PAT!"
+  echo       GITHUB_PAT = saved [OK]
+  goto PAT_READY
+)
+echo       [SKIP] PAT 없이 계속 — GitHub 자동 repo 생성 비활성화
+goto DONE
+
+:PAT_READY
+
+rem --- Create GitHub repo ---
 for %%P in ("%TARGET%") do set "PROJ_BASE=%%~nxP"
 set "PROJ_BASE=!PROJ_BASE: =-!"
 echo       Creating GitHub repo: !PROJ_BASE!...
 
-powershell -NoProfile -ExecutionPolicy Bypass -Command ^
-  "$pat='!GITHUB_PAT!';$base='!PROJ_BASE!'; ^
-   $headers=@{Authorization=('token '+$pat);Accept='application/vnd.github.v3+json'}; ^
-   $url=''; ^
-   for($i=0;$i-le10;$i++){$name=if($i-eq0){$base}else{$base+'-'+$i}; ^
-     try{$b=@{name=$name;private=$false;auto_init=$false}|ConvertTo-Json; ^
-       $r=Invoke-RestMethod -Uri 'https://api.github.com/user/repos' -Method Post -Headers $headers -Body $b -ContentType 'application/json' -ErrorAction Stop -TimeoutSec 15; ^
-       $url=$r.clone_url;break ^
-     }catch{if($_.Exception.Response.StatusCode.value__ -eq 422){continue}else{break}}}; ^
-   if($url){$url|Set-Content('%TARGET%\.github-repo-url.txt') -Encoding UTF8; Write-Host('      [OK] '+$url)}else{Write-Host '      [WARN] GitHub repo creation failed - 토큰/권한 확인 필요'}"
+powershell -NoProfile -ExecutionPolicy Bypass -Command "$pat='!GITHUB_PAT!';$base='!PROJ_BASE!'; $headers=@{Authorization=('token '+$pat);Accept='application/vnd.github.v3+json'}; $url=''; for($i=0;$i-le10;$i++){$name=if($i-eq0){$base}else{$base+'-'+$i}; try{$b=@{name=$name;private=$false;auto_init=$false}|ConvertTo-Json; $r=Invoke-RestMethod -Uri 'https://api.github.com/user/repos' -Method Post -Headers $headers -Body $b -ContentType 'application/json' -ErrorAction Stop -TimeoutSec 15; $url=$r.clone_url;break }catch{if($_.Exception.Response.StatusCode.value__ -eq 422){continue}else{break}}}; if($url){$url|Set-Content('%TARGET%\.github-repo-url.txt') -Encoding UTF8; Write-Host('[OK] '+$url)}else{Write-Host '[WARN] GitHub repo creation failed'}"
 
-rem --- remote add + 초기 commit ---
+rem --- Git init ---
 cd /d "%TARGET%"
+git init >nul 2>&1
+
 if exist "%TARGET%\.github-repo-url.txt" (
   for /f "usebackq tokens=*" %%U in ("%TARGET%\.github-repo-url.txt") do set "GH_URL=%%U"
   if not "!GH_URL!"=="" git remote add origin "!GH_URL!" >nul 2>&1
@@ -93,6 +124,6 @@ git commit -m "Initial commit from orchestration setup" >nul 2>&1
 if not errorlevel 1 echo       [OK] Initial commit done
 
 :DONE
-echo [Module 07] Git/GitHub OK
+echo [Module 07] GitHub OK
 endlocal
 exit /b 0

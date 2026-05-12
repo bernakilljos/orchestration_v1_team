@@ -82,7 +82,9 @@
       "Bash(bash plugins/exec_orch/hooks/install-external-watchdog.sh)",
       "Bash(cmd.exe //c \"schtasks /Query /TN \\\\\"ClaudeOrcaExternalWatchdog\\\\\" /FO LIST\")",
       "Bash(touch .claude/external-watchdog-disabled)",
-      "Bash(rm .claude/external-watchdog-disabled)"
+      "Bash(rm .claude/external-watchdog-disabled)",
+      "Read(//c/pjt/orchestration_v1_team/**)",
+      "Bash(PYTHONIOENCODING=utf-8 python .claude/scripts/build-arch-lecture-doc.py)"
     ],
     "deny": []
   },

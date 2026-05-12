@@ -84,7 +84,8 @@
       "Bash(touch .claude/external-watchdog-disabled)",
       "Bash(rm .claude/external-watchdog-disabled)",
       "Read(//c/pjt/orchestration_v1_team/**)",
-      "Bash(PYTHONIOENCODING=utf-8 python .claude/scripts/build-arch-lecture-doc.py)"
+      "Bash(PYTHONIOENCODING=utf-8 python .claude/scripts/build-arch-lecture-doc.py)",
+      "Bash(cmd //c \"taskkill /IM winword.exe /F\")"
     ],
     "deny": []
   },
